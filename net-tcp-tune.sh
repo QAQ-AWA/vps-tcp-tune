@@ -28,8 +28,8 @@ get_rtt_ms() {
 
   # --- MODIFIED: Smart RTT detection ---
   # 1. 优先尝试从 SSH 环境变量中自动获取客户端 IP
-  if [ -n "$SSH_CONNECTION" ]; then
-    ping_target=$(echo "$SSH_CONNECTION" | awk '{print $1}')
+  if [ -n "${SSH_CONNECTION:-}" ]; then
+    ping_target=$(echo "${SSH_CONNECTION:-}" | awk '{print $1}')
     ping_desc="SSH 客户端 ${ping_target}"
     note "成功从 SSH 连接中自动检测到客户端 IP: ${ping_target}"
   else
