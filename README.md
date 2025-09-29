@@ -10,23 +10,35 @@
 在你的 VPS 上执行以下命令即可：
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Eric86777/vps-tcp-tune/main/net-tcp-tune.sh | sudo bash
+wget https://raw.githubusercontent.com/Eric86777/vps-tcp-tune/main/net-tcp-tune.sh
+chmod +x net-tcp-tune.sh
+sudo ./net-tcp-tune.sh
 ```
 
 ---
 
 ## ⚙️ 参数模式
 
-脚本支持自动检测，也可以手动传参数（非交互模式）：
+脚本支持自动检测，也可以手动传参数（非交互模式）。**推荐先下载再执行**：
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Eric86777/vps-tcp-tune/main/net-tcp-tune.sh | sudo bash -s -- -y --bw 1000 --rtt 80
+# 方法1：下载后执行（推荐）
+wget https://raw.githubusercontent.com/Eric86777/vps-tcp-tune/main/net-tcp-tune.sh
+chmod +x net-tcp-tune.sh
+sudo ./net-tcp-tune.sh -y --bw 1000 --rtt 80
+```
+
+```bash
+# 方法2：一行命令（备用）
+curl -fsSL https://raw.githubusercontent.com/Eric86777/vps-tcp-tune/main/net-tcp-tune.sh -o net-tcp-tune.sh && chmod +x net-tcp-tune.sh && sudo ./net-tcp-tune.sh -y --bw 1000 --rtt 80
 ```
 
 **参数说明：**
 - `-y` ：跳过交互，使用自动检测或手动输入的参数
 - `--bw` ：带宽，单位 Mbps（默认 1000）
 - `--rtt` ：延迟，单位 ms（默认自动检测，不成功时用 150）
+
+> **注意**：避免使用 `curl ... | bash` 管道执行，可能因交互冲突导致脚本失败
 
 ---
 
