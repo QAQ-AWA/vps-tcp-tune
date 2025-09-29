@@ -55,10 +55,10 @@ get_rtt_ms() {
   ping_result=$(ping -c 4 -W 2 "$ping_target" 2>/dev/null | tail -1 | awk -F'/' '{print $5}')
   
   if [[ "$ping_result" =~ ^[0-9]+([.][0-9]+)?$ ]]; then
-    ok "检测到平均 RTT: ${ping_result} ms"
+    ok "检测到平均 RTT: ${ping_result} ms" >&2
     printf "%.0f" "$ping_result"
   else
-    warn "Ping ${ping_target} 失败，无法检测 RTT。将使用默认值 150 ms。"
+    warn "Ping ${ping_target} 失败，无法检测 RTT。将使用默认值 150 ms。" >&2
     echo "150"
   fi
 }
