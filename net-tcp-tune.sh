@@ -3,8 +3,7 @@
 # BBR v3 终极优化脚本 - 融合版
 # 功能：结合 XanMod 官方内核的稳定性 + 专业队列算法调优
 # 特点：安全性 + 性能 双优化
-# 版本：3.0 Ultimate Pro Edition
-# 新增功能：UDP优化、tc fq立即生效、MSS clamp、并发优化、精准BDP、fq限速
+# 版本：2.0 Ultimate Edition
 #=============================================================================
 
 # 颜色定义
@@ -281,123 +280,70 @@ server_reboot() {
 }
 
 #=============================================================================
-# 新增功能函数
+# 配置冲突检测与清理（避免被其他 sysctl 覆盖）
 #=============================================================================
-
-# 检查并清理冲突的配置文件
 check_and_clean_conflicts() {
-    echo -e "${gl_kjlan}=== 检查配置冲突 ===${gl_bai}"
-    
-    local conflicts_found=0
-    local conflict_files=()
-    
-    # 检查可能冲突的配置文件（文件名排序在 99 之后的）
+    echo -e "${gl_kjlan}=== 检查 sysctl 配置冲突 ===${gl_bai}"
+    local conflicts=()
+    # 搜索 /etc/sysctl.d/ 下可能覆盖 tcp_rmem/tcp_wmem 的高序号文件
     for conf in /etc/sysctl.d/[0-9]*-*.conf /etc/sysctl.d/[0-9][0-9][0-9]-*.conf; do
-        if [ -f "$conf" ] && [ "$conf" != "$SYSCTL_CONF" ]; then
-            # 检查是否包含 TCP 缓冲区配置
-            if grep -q "tcp_wmem\|tcp_rmem" "$conf" 2>/dev/null; then
-                local filename=$(basename "$conf")
-                local filenum=$(echo "$filename" | grep -oP '^\d+')
-                
-                # 如果文件编号 >= 99，可能会覆盖我们的配置
-                if [ -n "$filenum" ] && [ "$filenum" -ge 99 ]; then
-                    conflict_files+=("$conf")
-                    conflicts_found=1
-                fi
+        [ -f "$conf" ] || continue
+        [ "$conf" = "$SYSCTL_CONF" ] && continue
+        if grep -qE "(^|\s)net\.ipv4\.tcp_(rmem|wmem)" "$conf" 2>/dev/null; then
+            base=$(basename "$conf")
+            num=$(echo "$base" | sed -n 's/^\([0-9]\+\).*/\1/p')
+            # 99 及以上优先生效，可能覆盖本脚本
+            if [ -n "$num" ] && [ "$num" -ge 99 ]; then
+                conflicts+=("$conf")
             fi
         fi
     done
-    
-    # 检查主配置文件
-    if [ -f /etc/sysctl.conf ]; then
-        if grep -q "^net.ipv4.tcp_wmem\|^net.ipv4.tcp_rmem" /etc/sysctl.conf 2>/dev/null; then
-            echo -e "${gl_huang}⚠️  发现 /etc/sysctl.conf 中有活动的 TCP 缓冲区配置${gl_bai}"
-            conflicts_found=1
-        fi
+
+    # 主配置文件直接设置也会覆盖
+    local has_sysctl_conflict=0
+    if [ -f /etc/sysctl.conf ] && grep -qE "(^|\s)net\.ipv4\.tcp_(rmem|wmem)" /etc/sysctl.conf 2>/dev/null; then
+        has_sysctl_conflict=1
     fi
-    
-    if [ $conflicts_found -eq 0 ]; then
-        echo -e "${gl_lv}✓ 未发现配置冲突${gl_bai}"
+
+    if [ ${#conflicts[@]} -eq 0 ] && [ $has_sysctl_conflict -eq 0 ]; then
+        echo -e "${gl_lv}✓ 未发现可能的覆盖配置${gl_bai}"
         return 0
     fi
-    
-    # 显示冲突文件
-    if [ ${#conflict_files[@]} -gt 0 ]; then
-        echo -e "${gl_huang}发现以下可能冲突的配置文件：${gl_bai}"
-        for file in "${conflict_files[@]}"; do
-            echo "  - $file"
-            grep "tcp_wmem\|tcp_rmem" "$file" | head -2 | sed 's/^/    /'
-        done
-        echo ""
-    fi
-    
-    read -e -p "$(echo -e "${gl_huang}是否自动清理冲突配置？(Y/N): ${gl_bai}")" clean_choice
-    
-    case "$clean_choice" in
+
+    echo -e "${gl_huang}发现可能的覆盖配置：${gl_bai}"
+    for f in "${conflicts[@]}"; do
+        echo "  - $f"; grep -E "net\.ipv4\.tcp_(rmem|wmem)" "$f" | sed 's/^/      /'
+    done
+    [ $has_sysctl_conflict -eq 1 ] && echo "  - /etc/sysctl.conf (含 tcp_rmem/tcp_wmem)"
+
+    read -e -p "是否自动禁用/注释这些覆盖配置？(Y/N): " ans
+    case "$ans" in
         [Yy])
-            # 注释掉 /etc/sysctl.conf 中的配置
-            if [ -f /etc/sysctl.conf ]; then
-                sed -i.bak '/^net.ipv4.tcp_wmem/s/^/# /' /etc/sysctl.conf 2>/dev/null
-                sed -i.bak '/^net.ipv4.tcp_rmem/s/^/# /' /etc/sysctl.conf 2>/dev/null
-                sed -i.bak '/^net.core.rmem_max/s/^/# /' /etc/sysctl.conf 2>/dev/null
-                sed -i.bak '/^net.core.wmem_max/s/^/# /' /etc/sysctl.conf 2>/dev/null
-                echo -e "${gl_lv}✓ 已注释 /etc/sysctl.conf 中的冲突配置${gl_bai}"
+            # 注释 /etc/sysctl.conf 中相关行
+            if [ $has_sysctl_conflict -eq 1 ]; then
+                sed -i.bak '/^net\.ipv4\.tcp_wmem/s/^/# /' /etc/sysctl.conf 2>/dev/null
+                sed -i.bak '/^net\.ipv4\.tcp_rmem/s/^/# /' /etc/sysctl.conf 2>/dev/null
+                sed -i.bak '/^net\.core\.rmem_max/s/^/# /' /etc/sysctl.conf 2>/dev/null
+                sed -i.bak '/^net\.core\.wmem_max/s/^/# /' /etc/sysctl.conf 2>/dev/null
+                echo -e "${gl_lv}✓ 已注释 /etc/sysctl.conf 中的相关配置${gl_bai}"
             fi
-            
-            # 备份并删除冲突的配置文件
-            for file in "${conflict_files[@]}"; do
-                if [ -f "$file" ]; then
-                    mv "$file" "${file}.disabled.$(date +%Y%m%d_%H%M%S)"
-                    echo -e "${gl_lv}✓ 已禁用: $(basename $file)${gl_bai}"
-                fi
+            # 将高优先级冲突文件重命名禁用
+            for f in "${conflicts[@]}"; do
+                mv "$f" "${f}.disabled.$(date +%Y%m%d_%H%M%S)" 2>/dev/null && \
+                  echo -e "${gl_lv}✓ 已禁用: $(basename "$f")${gl_bai}"
             done
-            
-            echo -e "${gl_lv}✓ 冲突清理完成${gl_bai}"
-            return 0
             ;;
         *)
-            echo -e "${gl_huang}已跳过清理，配置可能不会完全生效${gl_bai}"
-            return 1
+            echo -e "${gl_huang}已跳过自动清理，可能导致新配置未完全生效${gl_bai}"
             ;;
     esac
 }
 
-# 验证配置是否真正生效
-verify_current_config() {
-    echo -e "${gl_kjlan}=== 当前配置验证 ===${gl_bai}"
-    
-    local actual_wmem=$(sysctl -n net.ipv4.tcp_wmem 2>/dev/null | awk '{print $3}')
-    local actual_rmem=$(sysctl -n net.ipv4.tcp_rmem 2>/dev/null | awk '{print $3}')
-    local actual_cc=$(sysctl -n net.ipv4.tcp_congestion_control 2>/dev/null)
-    local actual_qdisc=$(sysctl -n net.core.default_qdisc 2>/dev/null)
-    
-    echo "拥塞控制: $actual_cc"
-    echo "队列算法: $actual_qdisc"
-    echo "TCP wmem 上限: $(echo "scale=2; $actual_wmem / 1048576" | bc 2>/dev/null || echo "$(($actual_wmem / 1048576))")MB"
-    echo "TCP rmem 上限: $(echo "scale=2; $actual_rmem / 1048576" | bc 2>/dev/null || echo "$(($actual_rmem / 1048576))")MB"
-    
-    # 检查是否符合预期
-    local expected_values="16777216 33554432 8388608"
-    local config_ok=0
-    
-    for val in $expected_values; do
-        if [ "$actual_wmem" = "$val" ] || [ "$actual_rmem" = "$val" ]; then
-            config_ok=1
-            break
-        fi
-    done
-    
-    echo ""
-    if [ "$actual_cc" = "bbr" ] && [ "$actual_qdisc" = "fq" ] && [ $config_ok -eq 1 ]; then
-        echo -e "${gl_lv}✅ 配置正常${gl_bai}"
-        return 0
-    else
-        echo -e "${gl_huang}⚠️  配置可能未完全生效，建议运行配置检查${gl_bai}"
-        return 1
-    fi
-}
+#=============================================================================
+# 立即生效与防分片函数（无需重启）
+#=============================================================================
 
-# 获取符合条件的网卡（排除虚拟网卡）
+# 获取需应用 qdisc 的网卡（排除常见虚拟接口）
 eligible_ifaces() {
     for d in /sys/class/net/*; do
         [ -e "$d" ] || continue
@@ -411,249 +357,30 @@ eligible_ifaces() {
 
 # tc fq 立即生效（无需重启）
 apply_tc_fq_now() {
-    if ! command -v tc &>/dev/null; then
-        echo -e "${gl_huang}警告: ${gl_bai}未检测到 tc 命令（iproute2），建议安装: apt install -y iproute2"
-        return 1
-    fi
-    
-    echo "正在对网卡应用 fq 队列算法..."
-    local count=0
-    for dev in $(eligible_ifaces); do
-        if tc qdisc replace dev "$dev" root fq 2>/dev/null; then
-            echo "  - $dev: ${gl_lv}✓${gl_bai}"
-            count=$((count + 1))
-        fi
-    done
-    
-    if [ $count -gt 0 ]; then
-        echo -e "${gl_lv}已对 $count 个网卡应用 fq（立即生效，无需重启）${gl_bai}"
+    if ! command -v tc >/dev/null 2>&1; then
+        echo -e "${gl_huang}警告: 未检测到 tc（iproute2），跳过 fq 应用${gl_bai}"
         return 0
-    else
-        echo -e "${gl_huang}未找到有效网卡${gl_bai}"
-        return 1
     fi
-}
-
-# fq maxrate 单连接限速（智能计算版本）
-set_fq_maxrate() {
-    local rate=$1  # e.g. 280mbit / 500mbit / off
-    
-    if ! command -v tc &>/dev/null; then
-        echo -e "${gl_huang}警告: ${gl_bai}未检测到 tc 命令"
-        return 1
-    fi
-    
-    if [ "$rate" = "off" ]; then
-        echo "正在移除单连接限速..."
-        for dev in $(eligible_ifaces); do
-            tc qdisc replace dev "$dev" root fq 2>/dev/null
-        done
-        echo -e "${gl_lv}已移除 maxrate，恢复默认 fq pacing${gl_bai}"
-    else
-        echo "正在设置单连接上限: $rate ..."
-        for dev in $(eligible_ifaces); do
-            tc qdisc replace dev "$dev" root fq maxrate "$rate" 2>/dev/null
-        done
-        echo -e "${gl_lv}已为 fq 设置单流上限: $rate${gl_bai}"
-        echo -e "${gl_kjlan}提示: 此设置可防止单连接占满带宽，适合多用户场景${gl_bai}"
-    fi
-}
-
-# 智能限速：根据目标有效带宽计算实际 maxrate
-set_fq_maxrate_smart() {
-    if ! command -v tc &>/dev/null; then
-        echo -e "${gl_huang}警告: ${gl_bai}未检测到 tc 命令"
-        return 1
-    fi
-    
-    echo -e "${gl_kjlan}=== 智能限速配置 ===${gl_bai}"
-    echo ""
-    echo "说明："
-    echo "  - 目标带宽：实际可用的 TCP 传输速度（扣除重传、协议开销）"
-    echo "  - 实际设置：会自动放大 30-40%，补偿重传和开销"
-    echo ""
-    echo "常见场景推荐："
-    echo "  • 联通 9929（300M 瓶颈）：目标 250 Mbps"
-    echo "  • 电信 CN2（500M 瓶颈）：目标 450 Mbps"
-    echo "  • 移动 CMI（1000M）：目标 900 Mbps"
-    echo ""
-    
-    read -e -p "请输入目标有效带宽（数字，单位 Mbps）: " target_mbps
-    
-    # 验证输入
-    if ! [[ "$target_mbps" =~ ^[0-9]+$ ]]; then
-        echo -e "${gl_hong}错误: 请输入有效的数字${gl_bai}"
-        return 1
-    fi
-    
-    if [ "$target_mbps" -lt 10 ] || [ "$target_mbps" -gt 10000 ]; then
-        echo -e "${gl_hong}错误: 带宽范围应在 10-10000 Mbps 之间${gl_bai}"
-        return 1
-    fi
-    
-    # 智能计算实际需要设置的 maxrate
-    # 系数说明：
-    # - 高丢包链路（9929 等）：1.40 倍（补偿 15-20% 重传 + 5% 协议开销 + 15% 余量）
-    # - 中等链路（CN2 等）：1.30 倍（补偿 5-10% 重传 + 5% 协议开销 + 10% 余量）
-    # - 优质链路（BGP 等）：1.20 倍（补偿 < 5% 重传 + 5% 协议开销 + 10% 余量）
-    
-    echo ""
-    echo "请选择链路类型（影响补偿系数）："
-    echo "1. 高丢包链路（联通 9929、部分 CN2 GT）- 补偿 40%"
-    echo "2. 中等链路（CN2 GIA、部分直连）- 补偿 30%"
-    echo "3. 优质链路（BGP、IPLC、IEPL）- 补偿 20%"
-    echo "4. 自动检测（推荐）"
-    read -e -p "选择（1-4）[默认 4]: " link_type
-    
-    # 默认值
-    link_type=${link_type:-4}
-    
-    case "$link_type" in
-        1)
-            multiplier="1.40"
-            link_desc="高丢包链路"
-            ;;
-        2)
-            multiplier="1.30"
-            link_desc="中等链路"
-            ;;
-        3)
-            multiplier="1.20"
-            link_desc="优质链路"
-            ;;
-        4)
-            # 自动检测：尝试 ping 测试
-            echo ""
-            echo "正在自动检测链路质量..."
-            read -e -p "请输入测试目标 IP（回车跳过自动检测）: " test_ip
-            
-            if [ -n "$test_ip" ] && command -v ping &>/dev/null; then
-                loss=$(ping -c 20 -i 0.2 "$test_ip" 2>/dev/null | grep -oP '\d+(?=% packet loss)')
-                if [ -n "$loss" ]; then
-                    if [ "$loss" -ge 10 ]; then
-                        multiplier="1.40"
-                        link_desc="高丢包链路（检测到 ${loss}% 丢包）"
-                    elif [ "$loss" -ge 5 ]; then
-                        multiplier="1.30"
-                        link_desc="中等链路（检测到 ${loss}% 丢包）"
-                    else
-                        multiplier="1.20"
-                        link_desc="优质链路（检测到 ${loss}% 丢包）"
-                    fi
-                else
-                    multiplier="1.35"
-                    link_desc="中等链路（检测失败，使用默认值）"
-                fi
-            else
-                multiplier="1.35"
-                link_desc="中等链路（未检测，使用默认值）"
-            fi
-            ;;
-        *)
-            echo -e "${gl_hong}无效选择，使用默认值${gl_bai}"
-            multiplier="1.35"
-            link_desc="中等链路"
-            ;;
-    esac
-    
-    # 计算实际 maxrate
-    actual_rate=$(echo "$target_mbps * $multiplier" | bc | awk '{print int($1+0.5)}')
-    
-    echo ""
-    echo -e "${gl_kjlan}=== 计算结果 ===${gl_bai}"
-    echo "链路类型: $link_desc"
-    echo "补偿系数: ${multiplier}x"
-    echo "目标有效带宽: ${target_mbps} Mbps"
-    echo "实际设置 maxrate: ${actual_rate} Mbit"
-    echo ""
-    echo "预期效果："
-    echo "  • TCP 理论带宽: 约 ${actual_rate} Mbps"
-    echo "  • 扣除重传和开销后"
-    echo "  • 实际有效带宽: 约 ${target_mbps} Mbps ✅"
-    echo ""
-    
-    read -e -p "确认应用此配置？(Y/N): " confirm
-    
-    case "$confirm" in
-        [Yy])
-            echo "正在应用配置..."
-            for dev in $(eligible_ifaces); do
-                tc qdisc replace dev "$dev" root fq maxrate "${actual_rate}mbit" 2>/dev/null && \
-                echo "  ✓ $dev: maxrate ${actual_rate}mbit"
-            done
-            echo ""
-            echo -e "${gl_lv}✅ 智能限速配置完成${gl_bai}"
-            echo -e "${gl_kjlan}提示: 建议运行网络测试验证实际效果${gl_bai}"
-            ;;
-        *)
-            echo "已取消配置"
-            return 1
-            ;;
-    esac
-}
-
-# MSS clamp 防分片
-apply_mss_clamp() {
-    local action=$1  # enable/disable
-    
-    if ! command -v iptables &>/dev/null; then
-        echo -e "${gl_huang}警告: ${gl_bai}未检测到 iptables，跳过 MSS clamp"
-        return 1
-    fi
-    
-    if [ "$action" = "enable" ]; then
-        # 检查规则是否已存在
-        if iptables -t mangle -C FORWARD -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --clamp-mss-to-pmtu >/dev/null 2>&1; then
-            echo -e "${gl_huang}MSS clamp 规则已存在${gl_bai}"
-        else
-            iptables -t mangle -A FORWARD -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --clamp-mss-to-pmtu
-            echo -e "${gl_lv}MSS clamp 已启用（FORWARD 链）${gl_bai}"
-            echo -e "${gl_kjlan}提示: 此功能可防止跨运营商 TCP 分片，减少重传${gl_bai}"
-        fi
-    else
-        if iptables -t mangle -D FORWARD -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --clamp-mss-to-pmtu >/dev/null 2>&1; then
-            echo -e "${gl_lv}MSS clamp 已关闭${gl_bai}"
-        else
-            echo -e "${gl_huang}MSS clamp 规则不存在或已删除${gl_bai}"
-        fi
-    fi
-}
-
-# 并发连接优化（limits + systemd）
-tune_limits_and_systemd() {
-    echo -e "${gl_kjlan}=== 配置并发连接优化 ===${gl_bai}"
-    
-    # 1. 配置 limits.conf
-    if ! grep -q "soft nofile 1048576" /etc/security/limits.conf 2>/dev/null; then
-        cat >> /etc/security/limits.conf <<'EOF'
-
-# 高并发优化（BBR Ultimate Pro）
-* soft nofile 1048576
-* hard nofile 1048576
-EOF
-        echo "✓ 已写入 /etc/security/limits.conf"
-    else
-        echo "✓ limits.conf 已配置"
-    fi
-    
-    # 2. 配置常见服务的 systemd 覆盖
-    for service in realm xray v2ray hysteria tuic; do
-        if systemctl list-unit-files | grep -q "^${service}.service"; then
-            mkdir -p /etc/systemd/system/${service}.service.d
-            cat > /etc/systemd/system/${service}.service.d/override.conf <<'EOF'
-[Service]
-LimitNOFILE=1048576
-TasksMax=infinity
-Restart=always
-RestartSec=3
-EOF
-            echo "✓ 已配置 ${service}.service"
-        fi
+    local applied=0
+    for dev in $(eligible_ifaces); do
+        tc qdisc replace dev "$dev" root fq 2>/dev/null && applied=$((applied+1))
     done
-    
-    systemctl daemon-reload 2>/dev/null
-    echo -e "${gl_lv}并发优化配置完成！${gl_bai}"
-    echo -e "${gl_kjlan}提示: 需要重新登录或重启相关服务才能生效${gl_bai}"
+    [ $applied -gt 0 ] && echo -e "${gl_lv}已对 $applied 个网卡应用 fq（即时生效）${gl_bai}" || echo -e "${gl_huang}未发现可应用 fq 的网卡${gl_bai}"
+}
+
+# MSS clamp（防分片）自动启用
+apply_mss_clamp() {
+    local action=$1  # enable|disable
+    if ! command -v iptables >/dev/null 2>&1; then
+        echo -e "${gl_huang}警告: 未检测到 iptables，跳过 MSS clamp${gl_bai}"
+        return 0
+    fi
+    if [ "$action" = "enable" ]; then
+        iptables -t mangle -C FORWARD -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --clamp-mss-to-pmtu >/dev/null 2>&1 \
+          || iptables -t mangle -A FORWARD -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --clamp-mss-to-pmtu
+    else
+        iptables -t mangle -D FORWARD -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --clamp-mss-to-pmtu >/dev/null 2>&1 || true
+    fi
 }
 
 #=============================================================================
@@ -666,12 +393,7 @@ bbr_configure() {
     
     echo -e "${gl_kjlan}=== 配置 BBR v3 + ${qdisc} ===${gl_bai}"
     
-    # 步骤 0：检查并清理冲突配置
-    echo ""
-    check_and_clean_conflicts
-    echo ""
-    
-    # 步骤 1：清理冲突配置（保留原有逻辑作为双重保险）
+    # 步骤 1：清理冲突配置
     echo "正在检查配置冲突..."
     
     # 1.1 备份主配置文件（如果还没备份）
@@ -695,6 +417,9 @@ bbr_configure() {
         echo "已删除配置软链接"
     fi
     
+    # 步骤 0.5：检查并清理可能覆盖的新旧配置冲突
+    check_and_clean_conflicts
+
     # 步骤 2：创建独立配置文件
     echo "正在创建新配置..."
     cat > "$SYSCTL_CONF" << EOF
@@ -708,34 +433,21 @@ net.core.default_qdisc=${qdisc}
 net.ipv4.tcp_congestion_control=bbr
 
 # TCP 缓冲区优化（16MB 上限，适合小内存 VPS）
-net.core.rmem_default=262144
-net.core.wmem_default=262144
 net.core.rmem_max=16777216
 net.core.wmem_max=16777216
 net.ipv4.tcp_rmem=4096 87380 16777216
 net.ipv4.tcp_wmem=4096 65536 16777216
-
-# UDP 优化（提高最低缓冲，避免突发丢包）
-net.ipv4.udp_rmem_min=196608
-net.ipv4.udp_wmem_min=196608
-net.ipv4.udp_mem=32768 8388608 16777216
-
-# 高级优化
-net.ipv4.tcp_slow_start_after_idle=0
-net.ipv4.tcp_mtu_probing=1
-net.core.netdev_max_backlog=8192
-net.ipv4.tcp_max_syn_backlog=4096
-net.core.somaxconn=1024
 EOF
 
     # 步骤 3：应用配置（只加载此配置文件）
     echo "正在应用配置..."
     sysctl -p "$SYSCTL_CONF" > /dev/null 2>&1
     
-    # 步骤 3.5：立即应用 tc fq（无需重启）
-    echo "正在应用队列算法到网卡..."
-    apply_tc_fq_now > /dev/null 2>&1
-    
+    # 步骤 3.5：立即应用 fq，并启用 MSS clamp（无需重启）
+    echo "正在应用队列与防分片（无需重启）..."
+    apply_tc_fq_now >/dev/null 2>&1
+    apply_mss_clamp enable >/dev/null 2>&1
+
     # 步骤 4：验证配置是否真正生效
     local actual_qdisc=$(sysctl -n net.core.default_qdisc 2>/dev/null)
     local actual_cc=$(sysctl -n net.ipv4.tcp_congestion_control 2>/dev/null)
@@ -794,12 +506,7 @@ bbr_configure_2gb() {
     
     echo -e "${gl_kjlan}=== 配置 BBR v3 + ${qdisc} (2GB+ 内存优化) ===${gl_bai}"
     
-    # 步骤 0：检查并清理冲突配置
-    echo ""
-    check_and_clean_conflicts
-    echo ""
-    
-    # 步骤 1：清理冲突配置（保留原有逻辑作为双重保险）
+    # 步骤 1：清理冲突配置
     echo "正在检查配置冲突..."
     
     # 1.1 备份主配置文件（如果还没备份）
@@ -823,6 +530,9 @@ bbr_configure_2gb() {
         echo "已删除配置软链接"
     fi
     
+    # 步骤 0.5：检查并清理可能覆盖的新旧配置冲突
+    check_and_clean_conflicts
+
     # 步骤 2：创建独立配置文件（2GB 内存版本）
     echo "正在创建新配置..."
     cat > "$SYSCTL_CONF" << EOF
@@ -836,34 +546,27 @@ net.core.default_qdisc=${qdisc}
 net.ipv4.tcp_congestion_control=bbr
 
 # TCP 缓冲区优化（32MB 上限，256KB 默认值，适合 2GB+ 内存 VPS）
-net.core.rmem_default=262144
-net.core.wmem_default=262144
 net.core.rmem_max=33554432
 net.core.wmem_max=33554432
-net.ipv4.tcp_rmem=4096 131072 33554432
-net.ipv4.tcp_wmem=4096 131072 33554432
-
-# UDP 优化（高性能场景）
-net.ipv4.udp_rmem_min=262144
-net.ipv4.udp_wmem_min=262144
-net.ipv4.udp_mem=65536 16777216 33554432
+net.ipv4.tcp_rmem=4096 262144 33554432
+net.ipv4.tcp_wmem=4096 262144 33554432
 
 # 高级优化（适合高带宽场景）
 net.ipv4.tcp_slow_start_after_idle=0
 net.ipv4.tcp_mtu_probing=1
 net.core.netdev_max_backlog=16384
 net.ipv4.tcp_max_syn_backlog=8192
-net.core.somaxconn=1024
 EOF
 
     # 步骤 3：应用配置（只加载此配置文件）
     echo "正在应用配置..."
     sysctl -p "$SYSCTL_CONF" > /dev/null 2>&1
     
-    # 步骤 3.5：立即应用 tc fq（无需重启）
-    echo "正在应用队列算法到网卡..."
-    apply_tc_fq_now > /dev/null 2>&1
-    
+    # 步骤 3.5：立即应用 fq，并启用 MSS clamp（无需重启）
+    echo "正在应用队列与防分片（无需重启）..."
+    apply_tc_fq_now >/dev/null 2>&1
+    apply_mss_clamp enable >/dev/null 2>&1
+
     # 步骤 4：验证配置是否真正生效
     local actual_qdisc=$(sysctl -n net.core.default_qdisc 2>/dev/null)
     local actual_cc=$(sysctl -n net.ipv4.tcp_congestion_control 2>/dev/null)
@@ -1137,27 +840,15 @@ show_main_menu() {
     
     echo ""
     echo -e "${gl_kjlan}[BBR 配置]${gl_bai}"
-    echo "3. 快速启用 BBR + FQ（≤1GB 内存）+ UDP 优化"
-    echo "4. 快速启用 BBR + FQ（2GB+ 内存）+ UDP 优化"
-    echo ""
-    echo -e "${gl_kjlan}[高级优化]${gl_bai}"
-    echo "5. 立即应用 fq 到网卡（tc 命令，无需重启）"
-    echo "6. 🔥 智能限速（输入目标带宽，自动补偿重传）"
-    echo "7. 手动设置 fq 限速（需自行计算）"
-    echo "8. 取消单连接限速"
-    echo "9. 启用 MSS clamp（防 TCP 分片）"
-    echo "10. 关闭 MSS clamp"
-    echo "11. 并发连接优化（limits + systemd）"
+    echo "3. 快速启用 BBR + FQ（≤1GB 内存）"
+    echo "4. 快速启用 BBR + FQ（2GB+ 内存）"
     echo ""
     echo -e "${gl_kjlan}[系统工具]${gl_bai}"
-    echo "12. 虚拟内存管理"
-    echo ""
-    echo -e "${gl_kjlan}[配置诊断]${gl_bai}"
-    echo "13. 配置诊断和修复（检查冲突、验证配置）"
+    echo "5. 虚拟内存管理"
     echo ""
     echo -e "${gl_kjlan}[系统信息]${gl_bai}"
-    echo "14. 查看详细状态"
-    echo "15. 性能测试建议"
+    echo "6. 查看详细状态"
+    echo "7. 性能测试建议"
     echo ""
     echo "0. 退出脚本"
     echo "------------------------------------------------"
@@ -1184,111 +875,20 @@ show_main_menu() {
             fi
             ;;
         3)
-            bbr_configure "fq" "通用场景优化（≤1GB 内存，16MB 缓冲区 + UDP 优化）"
+            bbr_configure "fq" "通用场景优化（≤1GB 内存，16MB 缓冲区）"
             break_end
             ;;
         4)
-            bbr_configure_2gb "fq" "通用场景优化（2GB+ 内存，32MB 缓冲区 + UDP 优化）"
+            bbr_configure_2gb "fq" "通用场景优化（2GB+ 内存，32MB 缓冲区）"
             break_end
             ;;
         5)
-            apply_tc_fq_now
-            break_end
-            ;;
-        6)
-            set_fq_maxrate_smart
-            break_end
-            ;;
-        7)
-            echo -e "${gl_kjlan}=== 手动设置单连接限速 ===${gl_bai}"
-            echo "推荐值参考："
-            echo "  - 300Mbps 专线：280mbit"
-            echo "  - 500Mbps 专线：480mbit"
-            echo "  - 1Gbps 专线：   900mbit"
-            echo ""
-            echo -e "${gl_huang}提示：此为手动模式，不会自动补偿重传${gl_bai}"
-            echo -e "${gl_huang}      如需自动计算，请使用选项 6（智能限速）${gl_bai}"
-            echo ""
-            read -e -p "请输入限速值（如 280mbit）: " maxrate
-            if [ -n "$maxrate" ]; then
-                set_fq_maxrate "$maxrate"
-            fi
-            break_end
-            ;;
-        8)
-            set_fq_maxrate off
-            break_end
-            ;;
-        9)
-            apply_mss_clamp enable
-            break_end
-            ;;
-        10)
-            apply_mss_clamp disable
-            break_end
-            ;;
-        11)
-            tune_limits_and_systemd
-            break_end
-            ;;
-        12)
             manage_swap
             ;;
-        13)
-            clear
-            echo -e "${gl_kjlan}=== BBR 配置诊断和修复 ===${gl_bai}"
-            echo ""
-            
-            # 1. 检查冲突
-            check_and_clean_conflicts
-            echo ""
-            
-            # 2. 验证当前配置
-            verify_current_config
-            echo ""
-            
-            # 3. 检查 tc fq 状态
-            echo -e "${gl_kjlan}=== 队列算法状态 ===${gl_bai}"
-            if command -v tc &>/dev/null; then
-                tc qdisc show | grep fq | head -3
-                if [ $? -ne 0 ]; then
-                    echo -e "${gl_huang}⚠️  网卡未应用 fq 队列算法${gl_bai}"
-                    read -e -p "是否立即应用？(Y/N): " apply_fq
-                    if [[ "$apply_fq" =~ ^[Yy]$ ]]; then
-                        apply_tc_fq_now
-                    fi
-                else
-                    echo -e "${gl_lv}✓ fq 队列算法已应用${gl_bai}"
-                fi
-            else
-                echo -e "${gl_huang}⚠️  未安装 tc 命令${gl_bai}"
-            fi
-            echo ""
-            
-            # 4. 检查 MSS clamp 状态
-            echo -e "${gl_kjlan}=== MSS Clamp 状态 ===${gl_bai}"
-            if command -v iptables &>/dev/null; then
-                if iptables -t mangle -C FORWARD -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --clamp-mss-to-pmtu >/dev/null 2>&1; then
-                    echo -e "${gl_lv}✓ MSS clamp 已启用${gl_bai}"
-                else
-                    echo -e "${gl_huang}⚠️  MSS clamp 未启用${gl_bai}"
-                fi
-            fi
-            echo ""
-            
-            # 5. 提供修复建议
-            echo -e "${gl_kjlan}=== 修复建议 ===${gl_bai}"
-            echo "如果发现配置异常，建议执行："
-            echo "  • 重新运行 BBR 配置（菜单选项 3 或 4）"
-            echo "  • 立即应用 fq（菜单选项 5）"
-            echo "  • 启用 MSS clamp（菜单选项 8）"
-            
-            break_end
-            ;;
-        14)
+        6)
             show_detailed_status
             ;;
-        15)
+        7)
             show_performance_test
             ;;
         0)
@@ -1454,17 +1054,6 @@ show_performance_test() {
 
 main() {
     check_root
-    
-    # 安装必要依赖（用于高级功能）
-    local missing_tools=""
-    command -v tc &>/dev/null || missing_tools="$missing_tools iproute2"
-    command -v iptables &>/dev/null || missing_tools="$missing_tools iptables"
-    command -v bc &>/dev/null || missing_tools="$missing_tools bc"
-    
-    if [ -n "$missing_tools" ]; then
-        echo -e "${gl_huang}检测到缺少必要工具，正在安装...${gl_bai}"
-        install_package $missing_tools > /dev/null 2>&1
-    fi
     
     # 命令行参数支持
     if [ "$1" = "-i" ] || [ "$1" = "--install" ]; then
