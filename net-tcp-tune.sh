@@ -284,6 +284,119 @@ server_reboot() {
 # 新增功能函数
 #=============================================================================
 
+# 检查并清理冲突的配置文件
+check_and_clean_conflicts() {
+    echo -e "${gl_kjlan}=== 检查配置冲突 ===${gl_bai}"
+    
+    local conflicts_found=0
+    local conflict_files=()
+    
+    # 检查可能冲突的配置文件（文件名排序在 99 之后的）
+    for conf in /etc/sysctl.d/[0-9]*-*.conf /etc/sysctl.d/[0-9][0-9][0-9]-*.conf; do
+        if [ -f "$conf" ] && [ "$conf" != "$SYSCTL_CONF" ]; then
+            # 检查是否包含 TCP 缓冲区配置
+            if grep -q "tcp_wmem\|tcp_rmem" "$conf" 2>/dev/null; then
+                local filename=$(basename "$conf")
+                local filenum=$(echo "$filename" | grep -oP '^\d+')
+                
+                # 如果文件编号 >= 99，可能会覆盖我们的配置
+                if [ -n "$filenum" ] && [ "$filenum" -ge 99 ]; then
+                    conflict_files+=("$conf")
+                    conflicts_found=1
+                fi
+            fi
+        fi
+    done
+    
+    # 检查主配置文件
+    if [ -f /etc/sysctl.conf ]; then
+        if grep -q "^net.ipv4.tcp_wmem\|^net.ipv4.tcp_rmem" /etc/sysctl.conf 2>/dev/null; then
+            echo -e "${gl_huang}⚠️  发现 /etc/sysctl.conf 中有活动的 TCP 缓冲区配置${gl_bai}"
+            conflicts_found=1
+        fi
+    fi
+    
+    if [ $conflicts_found -eq 0 ]; then
+        echo -e "${gl_lv}✓ 未发现配置冲突${gl_bai}"
+        return 0
+    fi
+    
+    # 显示冲突文件
+    if [ ${#conflict_files[@]} -gt 0 ]; then
+        echo -e "${gl_huang}发现以下可能冲突的配置文件：${gl_bai}"
+        for file in "${conflict_files[@]}"; do
+            echo "  - $file"
+            grep "tcp_wmem\|tcp_rmem" "$file" | head -2 | sed 's/^/    /'
+        done
+        echo ""
+    fi
+    
+    read -e -p "$(echo -e "${gl_huang}是否自动清理冲突配置？(Y/N): ${gl_bai}")" clean_choice
+    
+    case "$clean_choice" in
+        [Yy])
+            # 注释掉 /etc/sysctl.conf 中的配置
+            if [ -f /etc/sysctl.conf ]; then
+                sed -i.bak '/^net.ipv4.tcp_wmem/s/^/# /' /etc/sysctl.conf 2>/dev/null
+                sed -i.bak '/^net.ipv4.tcp_rmem/s/^/# /' /etc/sysctl.conf 2>/dev/null
+                sed -i.bak '/^net.core.rmem_max/s/^/# /' /etc/sysctl.conf 2>/dev/null
+                sed -i.bak '/^net.core.wmem_max/s/^/# /' /etc/sysctl.conf 2>/dev/null
+                echo -e "${gl_lv}✓ 已注释 /etc/sysctl.conf 中的冲突配置${gl_bai}"
+            fi
+            
+            # 备份并删除冲突的配置文件
+            for file in "${conflict_files[@]}"; do
+                if [ -f "$file" ]; then
+                    mv "$file" "${file}.disabled.$(date +%Y%m%d_%H%M%S)"
+                    echo -e "${gl_lv}✓ 已禁用: $(basename $file)${gl_bai}"
+                fi
+            done
+            
+            echo -e "${gl_lv}✓ 冲突清理完成${gl_bai}"
+            return 0
+            ;;
+        *)
+            echo -e "${gl_huang}已跳过清理，配置可能不会完全生效${gl_bai}"
+            return 1
+            ;;
+    esac
+}
+
+# 验证配置是否真正生效
+verify_current_config() {
+    echo -e "${gl_kjlan}=== 当前配置验证 ===${gl_bai}"
+    
+    local actual_wmem=$(sysctl -n net.ipv4.tcp_wmem 2>/dev/null | awk '{print $3}')
+    local actual_rmem=$(sysctl -n net.ipv4.tcp_rmem 2>/dev/null | awk '{print $3}')
+    local actual_cc=$(sysctl -n net.ipv4.tcp_congestion_control 2>/dev/null)
+    local actual_qdisc=$(sysctl -n net.core.default_qdisc 2>/dev/null)
+    
+    echo "拥塞控制: $actual_cc"
+    echo "队列算法: $actual_qdisc"
+    echo "TCP wmem 上限: $(echo "scale=2; $actual_wmem / 1048576" | bc 2>/dev/null || echo "$(($actual_wmem / 1048576))")MB"
+    echo "TCP rmem 上限: $(echo "scale=2; $actual_rmem / 1048576" | bc 2>/dev/null || echo "$(($actual_rmem / 1048576))")MB"
+    
+    # 检查是否符合预期
+    local expected_values="16777216 33554432 8388608"
+    local config_ok=0
+    
+    for val in $expected_values; do
+        if [ "$actual_wmem" = "$val" ] || [ "$actual_rmem" = "$val" ]; then
+            config_ok=1
+            break
+        fi
+    done
+    
+    echo ""
+    if [ "$actual_cc" = "bbr" ] && [ "$actual_qdisc" = "fq" ] && [ $config_ok -eq 1 ]; then
+        echo -e "${gl_lv}✅ 配置正常${gl_bai}"
+        return 0
+    else
+        echo -e "${gl_huang}⚠️  配置可能未完全生效，建议运行配置检查${gl_bai}"
+        return 1
+    fi
+}
+
 # 获取符合条件的网卡（排除虚拟网卡）
 eligible_ifaces() {
     for d in /sys/class/net/*; do
@@ -420,7 +533,12 @@ bbr_configure() {
     
     echo -e "${gl_kjlan}=== 配置 BBR v3 + ${qdisc} ===${gl_bai}"
     
-    # 步骤 1：清理冲突配置
+    # 步骤 0：检查并清理冲突配置
+    echo ""
+    check_and_clean_conflicts
+    echo ""
+    
+    # 步骤 1：清理冲突配置（保留原有逻辑作为双重保险）
     echo "正在检查配置冲突..."
     
     # 1.1 备份主配置文件（如果还没备份）
@@ -543,7 +661,12 @@ bbr_configure_2gb() {
     
     echo -e "${gl_kjlan}=== 配置 BBR v3 + ${qdisc} (2GB+ 内存优化) ===${gl_bai}"
     
-    # 步骤 1：清理冲突配置
+    # 步骤 0：检查并清理冲突配置
+    echo ""
+    check_and_clean_conflicts
+    echo ""
+    
+    # 步骤 1：清理冲突配置（保留原有逻辑作为双重保险）
     echo "正在检查配置冲突..."
     
     # 1.1 备份主配置文件（如果还没备份）
@@ -895,9 +1018,12 @@ show_main_menu() {
     echo -e "${gl_kjlan}[系统工具]${gl_bai}"
     echo "11. 虚拟内存管理"
     echo ""
+    echo -e "${gl_kjlan}[配置诊断]${gl_bai}"
+    echo "12. 配置诊断和修复（检查冲突、验证配置）"
+    echo ""
     echo -e "${gl_kjlan}[系统信息]${gl_bai}"
-    echo "12. 查看详细状态"
-    echo "13. 性能测试建议"
+    echo "13. 查看详细状态"
+    echo "14. 性能测试建议"
     echo ""
     echo "0. 退出脚本"
     echo "------------------------------------------------"
@@ -968,9 +1094,60 @@ show_main_menu() {
             manage_swap
             ;;
         12)
-            show_detailed_status
+            clear
+            echo -e "${gl_kjlan}=== BBR 配置诊断和修复 ===${gl_bai}"
+            echo ""
+            
+            # 1. 检查冲突
+            check_and_clean_conflicts
+            echo ""
+            
+            # 2. 验证当前配置
+            verify_current_config
+            echo ""
+            
+            # 3. 检查 tc fq 状态
+            echo -e "${gl_kjlan}=== 队列算法状态 ===${gl_bai}"
+            if command -v tc &>/dev/null; then
+                tc qdisc show | grep fq | head -3
+                if [ $? -ne 0 ]; then
+                    echo -e "${gl_huang}⚠️  网卡未应用 fq 队列算法${gl_bai}"
+                    read -e -p "是否立即应用？(Y/N): " apply_fq
+                    if [[ "$apply_fq" =~ ^[Yy]$ ]]; then
+                        apply_tc_fq_now
+                    fi
+                else
+                    echo -e "${gl_lv}✓ fq 队列算法已应用${gl_bai}"
+                fi
+            else
+                echo -e "${gl_huang}⚠️  未安装 tc 命令${gl_bai}"
+            fi
+            echo ""
+            
+            # 4. 检查 MSS clamp 状态
+            echo -e "${gl_kjlan}=== MSS Clamp 状态 ===${gl_bai}"
+            if command -v iptables &>/dev/null; then
+                if iptables -t mangle -C FORWARD -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --clamp-mss-to-pmtu >/dev/null 2>&1; then
+                    echo -e "${gl_lv}✓ MSS clamp 已启用${gl_bai}"
+                else
+                    echo -e "${gl_huang}⚠️  MSS clamp 未启用${gl_bai}"
+                fi
+            fi
+            echo ""
+            
+            # 5. 提供修复建议
+            echo -e "${gl_kjlan}=== 修复建议 ===${gl_bai}"
+            echo "如果发现配置异常，建议执行："
+            echo "  • 重新运行 BBR 配置（菜单选项 3 或 4）"
+            echo "  • 立即应用 fq（菜单选项 5）"
+            echo "  • 启用 MSS clamp（菜单选项 8）"
+            
+            break_end
             ;;
         13)
+            show_detailed_status
+            ;;
+        14)
             show_performance_test
             ;;
         0)
