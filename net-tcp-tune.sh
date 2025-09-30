@@ -84,6 +84,102 @@ check_swap() {
     fi
 }
 
+add_swap() {
+    local new_swap=$1  # 获取传入的参数（单位：MB）
+    
+    echo -e "${gl_kjlan}=== 调整虚拟内存 ===${gl_bai}"
+    
+    # 获取当前系统中所有的 swap 分区
+    local swap_partitions=$(grep -E '^/dev/' /proc/swaps | awk '{print $1}')
+    
+    # 遍历并删除所有的 swap 分区
+    for partition in $swap_partitions; do
+        swapoff "$partition" 2>/dev/null
+        wipefs -a "$partition" 2>/dev/null
+        mkswap -f "$partition" 2>/dev/null
+    done
+    
+    # 确保 /swapfile 不再被使用
+    swapoff /swapfile 2>/dev/null
+    
+    # 删除旧的 /swapfile
+    rm -f /swapfile
+    
+    echo "正在创建 ${new_swap}MB 虚拟内存..."
+    
+    # 创建新的 swap 分区
+    fallocate -l ${new_swap}M /swapfile || dd if=/dev/zero of=/swapfile bs=1M count=${new_swap}
+    chmod 600 /swapfile
+    mkswap /swapfile > /dev/null 2>&1
+    swapon /swapfile
+    
+    # 更新 /etc/fstab
+    sed -i '/\/swapfile/d' /etc/fstab
+    echo "/swapfile swap swap defaults 0 0" >> /etc/fstab
+    
+    # Alpine Linux 特殊处理
+    if [ -f /etc/alpine-release ]; then
+        echo "nohup swapon /swapfile" > /etc/local.d/swap.start
+        chmod +x /etc/local.d/swap.start
+        rc-update add local 2>/dev/null
+    fi
+    
+    echo -e "${gl_lv}虚拟内存大小已调整为 ${new_swap}MB${gl_bai}"
+}
+
+manage_swap() {
+    while true; do
+        clear
+        echo -e "${gl_kjlan}=== 虚拟内存管理 ===${gl_bai}"
+        
+        local swap_used=$(free -m | awk 'NR==3{print $3}')
+        local swap_total=$(free -m | awk 'NR==3{print $2}')
+        local swap_info=$(free -m | awk 'NR==3{used=$3; total=$2; if (total == 0) {percentage=0} else {percentage=used*100/total}; printf "%dM/%dM (%d%%)", used, total, percentage}')
+        
+        echo -e "当前虚拟内存: ${gl_huang}$swap_info${gl_bai}"
+        echo "------------------------------------------------"
+        echo "1. 分配 1024M (1GB)"
+        echo "2. 分配 2048M (2GB)"
+        echo "3. 分配 4096M (4GB)"
+        echo "4. 自定义大小"
+        echo "0. 返回主菜单"
+        echo "------------------------------------------------"
+        read -e -p "请输入选择: " choice
+        
+        case "$choice" in
+            1)
+                add_swap 1024
+                break_end
+                ;;
+            2)
+                add_swap 2048
+                break_end
+                ;;
+            3)
+                add_swap 4096
+                break_end
+                ;;
+            4)
+                read -e -p "请输入虚拟内存大小（单位 MB）: " new_swap
+                if [[ "$new_swap" =~ ^[0-9]+$ ]] && [ "$new_swap" -gt 0 ]; then
+                    add_swap "$new_swap"
+                    break_end
+                else
+                    echo -e "${gl_hong}错误: 请输入有效的数字${gl_bai}"
+                    sleep 2
+                fi
+                ;;
+            0)
+                return
+                ;;
+            *)
+                echo "无效选择"
+                sleep 2
+                ;;
+        esac
+    done
+}
+
 server_reboot() {
     read -e -p "$(echo -e "${gl_huang}提示: ${gl_bai}现在重启服务器使配置生效吗？(Y/N): ")" rboot
     case "$rboot" in
@@ -620,9 +716,12 @@ show_main_menu() {
     echo "6. 快速启用 BBR + FQ_PIE（低延迟）"
     echo "7. 快速启用 BBR + CAKE（智能整形）"
     echo ""
+    echo -e "${gl_kjlan}[系统工具]${gl_bai}"
+    echo "8. 虚拟内存管理"
+    echo ""
     echo -e "${gl_kjlan}[系统信息]${gl_bai}"
-    echo "8. 查看详细状态"
-    echo "9. 性能测试建议"
+    echo "9. 查看详细状态"
+    echo "10. 性能测试建议"
     echo ""
     echo "0. 退出脚本"
     echo "------------------------------------------------"
@@ -666,9 +765,12 @@ show_main_menu() {
             break_end
             ;;
         8)
-            show_detailed_status
+            manage_swap
             ;;
         9)
+            show_detailed_status
+            ;;
+        10)
             show_performance_test
             ;;
         0)
