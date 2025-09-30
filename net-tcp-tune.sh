@@ -430,11 +430,17 @@ net.core.default_qdisc=${qdisc}
 # 拥塞控制算法
 net.ipv4.tcp_congestion_control=bbr
 
-# TCP 缓冲区优化（32MB 上限，适合 2GB+ 内存 VPS）
+# TCP 缓冲区优化（32MB 上限，256KB 默认值，适合 2GB+ 内存 VPS）
 net.core.rmem_max=33554432
 net.core.wmem_max=33554432
-net.ipv4.tcp_rmem=4096 131072 33554432
-net.ipv4.tcp_wmem=4096 131072 33554432
+net.ipv4.tcp_rmem=4096 262144 33554432
+net.ipv4.tcp_wmem=4096 262144 33554432
+
+# 高级优化（适合高带宽场景）
+net.ipv4.tcp_slow_start_after_idle=0
+net.ipv4.tcp_mtu_probing=1
+net.core.netdev_max_backlog=16384
+net.ipv4.tcp_max_syn_backlog=8192
 EOF
 
     # 步骤 3：应用配置（只加载此配置文件）
