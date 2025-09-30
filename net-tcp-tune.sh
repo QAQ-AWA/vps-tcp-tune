@@ -732,8 +732,10 @@ show_main_menu() {
         1)
             if [ $is_installed -eq 0 ]; then
                 # 更新内核
-                echo "更新功能开发中..."
-                sleep 2
+                update_xanmod_kernel
+                if [ $? -eq 0 ]; then
+                    server_reboot
+                fi
             else
                 install_xanmod_kernel
                 if [ $? -eq 0 ]; then
@@ -770,6 +772,111 @@ show_main_menu() {
         *)
             echo "无效选择"
             sleep 2
+            ;;
+    esac
+}
+
+update_xanmod_kernel() {
+    clear
+    echo -e "${gl_kjlan}=== 更新 XanMod 内核 ===${gl_bai}"
+    echo "------------------------------------------------"
+    
+    # 获取当前内核版本
+    local current_kernel=$(uname -r)
+    echo -e "当前内核版本: ${gl_huang}${current_kernel}${gl_bai}"
+    echo ""
+    
+    # 检测 CPU 架构
+    local cpu_arch=$(uname -m)
+    
+    # ARM 架构提示
+    if [ "$cpu_arch" = "aarch64" ]; then
+        echo -e "${gl_huang}ARM64 架构暂不支持自动更新${gl_bai}"
+        echo "建议卸载后重新安装以获取最新版本"
+        break_end
+        return 1
+    fi
+    
+    # x86_64 架构更新流程
+    echo "正在检查可用更新..."
+    
+    # 添加 XanMod 仓库（如果不存在）
+    if [ ! -f /etc/apt/sources.list.d/xanmod-release.list ]; then
+        echo "正在添加 XanMod 仓库..."
+        
+        # 添加密钥
+        wget -qO - ${gh_proxy}raw.githubusercontent.com/kejilion/sh/main/archive.key | \
+            gpg --dearmor -o /usr/share/keyrings/xanmod-archive-keyring.gpg --yes 2>/dev/null
+        
+        if [ $? -ne 0 ]; then
+            wget -qO - https://dl.xanmod.org/archive.key | \
+                gpg --dearmor -o /usr/share/keyrings/xanmod-archive-keyring.gpg --yes 2>/dev/null
+        fi
+        
+        # 添加仓库
+        echo 'deb [signed-by=/usr/share/keyrings/xanmod-archive-keyring.gpg] http://deb.xanmod.org releases main' | \
+            tee /etc/apt/sources.list.d/xanmod-release.list > /dev/null
+    fi
+    
+    # 更新软件包列表
+    echo "正在更新软件包列表..."
+    apt update -y > /dev/null 2>&1
+    
+    # 检查已安装的 XanMod 内核包
+    local installed_packages=$(dpkg -l | grep 'linux-.*xanmod' | awk '{print $2}')
+    
+    if [ -z "$installed_packages" ]; then
+        echo -e "${gl_hong}错误: 未检测到已安装的 XanMod 内核${gl_bai}"
+        break_end
+        return 1
+    fi
+    
+    echo -e "已安装的内核包:"
+    echo "$installed_packages" | while read pkg; do
+        echo "  - $pkg"
+    done
+    echo ""
+    
+    # 检查是否有可用更新
+    local upgradable=$(apt list --upgradable 2>/dev/null | grep xanmod)
+    
+    if [ -z "$upgradable" ]; then
+        echo -e "${gl_lv}✅ 当前内核已是最新版本！${gl_bai}"
+        break_end
+        return 0
+    fi
+    
+    echo -e "${gl_huang}发现可用更新:${gl_bai}"
+    echo "$upgradable"
+    echo ""
+    
+    read -e -p "确定更新 XanMod 内核吗？(Y/N): " confirm
+    
+    case "$confirm" in
+        [Yy])
+            echo ""
+            echo "正在更新内核..."
+            apt install --only-upgrade -y $(echo "$installed_packages" | tr '\n' ' ')
+            
+            if [ $? -eq 0 ]; then
+                # 清理仓库文件（避免日常 apt update 时出错）
+                rm -f /etc/apt/sources.list.d/xanmod-release.list
+                
+                echo ""
+                echo -e "${gl_lv}✅ XanMod 内核更新成功！${gl_bai}"
+                echo -e "${gl_huang}⚠️  请重启系统以加载新内核${gl_bai}"
+                return 0
+            else
+                echo ""
+                echo -e "${gl_hong}❌ 内核更新失败${gl_bai}"
+                break_end
+                return 1
+            fi
+            ;;
+        *)
+            echo "已取消更新"
+            break_end
+            return 1
             ;;
     esac
 }
