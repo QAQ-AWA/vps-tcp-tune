@@ -206,6 +206,111 @@ EOF
     fi
 }
 
+bbr_configure_2gb() {
+    local qdisc=$1
+    local description=$2
+    
+    echo -e "${gl_kjlan}=== 配置 BBR v3 + ${qdisc} (2GB+ 内存优化) ===${gl_bai}"
+    
+    # 步骤 1：清理冲突配置
+    echo "正在检查配置冲突..."
+    
+    # 1.1 备份主配置文件（如果还没备份）
+    if [ -f /etc/sysctl.conf ] && ! [ -f /etc/sysctl.conf.bak.original ]; then
+        cp /etc/sysctl.conf /etc/sysctl.conf.bak.original
+        echo "已备份: /etc/sysctl.conf -> /etc/sysctl.conf.bak.original"
+    fi
+    
+    # 1.2 注释掉 /etc/sysctl.conf 中的 TCP 缓冲区配置（避免覆盖）
+    if [ -f /etc/sysctl.conf ]; then
+        sed -i '/^net.ipv4.tcp_wmem/s/^/# /' /etc/sysctl.conf 2>/dev/null
+        sed -i '/^net.ipv4.tcp_rmem/s/^/# /' /etc/sysctl.conf 2>/dev/null
+        sed -i '/^net.core.rmem_max/s/^/# /' /etc/sysctl.conf 2>/dev/null
+        sed -i '/^net.core.wmem_max/s/^/# /' /etc/sysctl.conf 2>/dev/null
+        echo "已清理 /etc/sysctl.conf 中的冲突配置"
+    fi
+    
+    # 1.3 删除可能存在的软链接
+    if [ -L /etc/sysctl.d/99-sysctl.conf ]; then
+        rm -f /etc/sysctl.d/99-sysctl.conf
+        echo "已删除配置软链接"
+    fi
+    
+    # 步骤 2：创建独立配置文件（2GB 内存版本）
+    echo "正在创建新配置..."
+    cat > "$SYSCTL_CONF" << EOF
+# BBR v3 Ultimate Configuration (2GB+ Memory)
+# Generated on $(date)
+
+# 队列调度算法
+net.core.default_qdisc=${qdisc}
+
+# 拥塞控制算法
+net.ipv4.tcp_congestion_control=bbr
+
+# TCP 缓冲区优化（32MB 上限，适合 2GB+ 内存 VPS）
+net.core.rmem_max=33554432
+net.core.wmem_max=33554432
+net.ipv4.tcp_rmem=4096 131072 33554432
+net.ipv4.tcp_wmem=4096 131072 33554432
+EOF
+
+    # 步骤 3：应用配置（只加载此配置文件）
+    echo "正在应用配置..."
+    sysctl -p "$SYSCTL_CONF" > /dev/null 2>&1
+    
+    # 步骤 4：验证配置是否真正生效
+    local actual_qdisc=$(sysctl -n net.core.default_qdisc 2>/dev/null)
+    local actual_cc=$(sysctl -n net.ipv4.tcp_congestion_control 2>/dev/null)
+    local actual_wmem=$(sysctl -n net.ipv4.tcp_wmem 2>/dev/null | awk '{print $3}')
+    local actual_rmem=$(sysctl -n net.ipv4.tcp_rmem 2>/dev/null | awk '{print $3}')
+    
+    echo ""
+    echo -e "${gl_kjlan}=== 配置验证 ===${gl_bai}"
+    
+    # 验证队列算法
+    if [ "$actual_qdisc" = "$qdisc" ]; then
+        echo -e "队列算法: ${gl_lv}$actual_qdisc ✓${gl_bai}"
+    else
+        echo -e "队列算法: ${gl_huang}$actual_qdisc (期望: $qdisc) ⚠${gl_bai}"
+    fi
+    
+    # 验证拥塞控制
+    if [ "$actual_cc" = "bbr" ]; then
+        echo -e "拥塞控制: ${gl_lv}$actual_cc ✓${gl_bai}"
+    else
+        echo -e "拥塞控制: ${gl_huang}$actual_cc (期望: bbr) ⚠${gl_bai}"
+    fi
+    
+    # 验证发送缓冲区
+    if [ "$actual_wmem" = "33554432" ]; then
+        echo -e "发送缓冲区: ${gl_lv}32MB ✓${gl_bai}"
+    else
+        echo -e "发送缓冲区: ${gl_huang}$(echo "scale=2; $actual_wmem / 1048576" | bc)MB (期望: 32MB) ⚠${gl_bai}"
+    fi
+    
+    # 验证接收缓冲区
+    if [ "$actual_rmem" = "33554432" ]; then
+        echo -e "接收缓冲区: ${gl_lv}32MB ✓${gl_bai}"
+    else
+        echo -e "接收缓冲区: ${gl_huang}$(echo "scale=2; $actual_rmem / 1048576" | bc)MB (期望: 32MB) ⚠${gl_bai}"
+    fi
+    
+    echo ""
+    
+    # 最终判断
+    if [ "$actual_qdisc" = "$qdisc" ] && [ "$actual_cc" = "bbr" ] && \
+       [ "$actual_wmem" = "33554432" ] && [ "$actual_rmem" = "33554432" ]; then
+        echo -e "${gl_lv}✅ BBR v3 + ${qdisc} (2GB配置) 完成并已生效！${gl_bai}"
+        echo -e "${gl_zi}优化说明: ${description}${gl_bai}"
+    else
+        echo -e "${gl_huang}⚠️ 配置已保存但部分参数未生效${gl_bai}"
+        echo -e "${gl_huang}建议执行以下操作：${gl_bai}"
+        echo "1. 检查是否有其他配置文件冲突"
+        echo "2. 重启服务器使配置完全生效: reboot"
+    fi
+}
+
 #=============================================================================
 # 状态检查函数
 #=============================================================================
@@ -510,13 +615,14 @@ show_main_menu() {
     echo ""
     echo -e "${gl_kjlan}[BBR 配置]${gl_bai}"
     echo "3. 配置 BBR 队列算法（推荐）"
-    echo "4. 快速启用 BBR + FQ"
-    echo "5. 快速启用 BBR + FQ_PIE（低延迟）"
-    echo "6. 快速启用 BBR + CAKE（智能整形）"
+    echo "4. 快速启用 BBR + FQ（≤1GB 内存）"
+    echo "5. 快速启用 BBR + FQ（2GB+ 内存）"
+    echo "6. 快速启用 BBR + FQ_PIE（低延迟）"
+    echo "7. 快速启用 BBR + CAKE（智能整形）"
     echo ""
     echo -e "${gl_kjlan}[系统信息]${gl_bai}"
-    echo "7. 查看详细状态"
-    echo "8. 性能测试建议"
+    echo "8. 查看详细状态"
+    echo "9. 性能测试建议"
     echo ""
     echo "0. 退出脚本"
     echo "------------------------------------------------"
@@ -544,21 +650,25 @@ show_main_menu() {
             configure_bbr_qdisc
             ;;
         4)
-            bbr_configure "fq" "通用场景优化"
+            bbr_configure "fq" "通用场景优化（≤1GB 内存，16MB 缓冲区）"
             break_end
             ;;
         5)
-            bbr_configure "fq_pie" "低延迟专用优化"
+            bbr_configure_2gb "fq" "通用场景优化（2GB+ 内存，32MB 缓冲区）"
             break_end
             ;;
         6)
-            bbr_configure "cake" "智能流量整形优化"
+            bbr_configure "fq_pie" "低延迟专用优化"
             break_end
             ;;
         7)
-            show_detailed_status
+            bbr_configure "cake" "智能流量整形优化"
+            break_end
             ;;
         8)
+            show_detailed_status
+            ;;
+        9)
             show_performance_test
             ;;
         0)
