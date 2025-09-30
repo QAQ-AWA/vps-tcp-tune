@@ -116,6 +116,8 @@ sudo ./net-tcp-tune.sh
 **推荐配置：**
 - 选项 3：交互式选择（查看详细对比）
 - 选项 4：快速启用 BBR + FQ（通用场景）
+  - ≤1GB 内存：16MB 缓冲区，64KB/85KB 默认值
+  - 2GB+ 内存：32MB 缓冲区，256KB 默认值，额外高级优化
 - 选项 5：快速启用 BBR + FQ_PIE（游戏/低延迟）
 - 选项 6：快速启用 BBR + CAKE（VPN/多用户）
 
@@ -154,7 +156,7 @@ version:        3
 /etc/sysctl.d/99-bbr-ultimate.conf
 ```
 
-**配置内容：**
+**配置内容示例（≤1GB 内存版本）：**
 ```bash
 # 队列调度算法
 net.core.default_qdisc=fq
@@ -162,11 +164,32 @@ net.core.default_qdisc=fq
 # 拥塞控制算法
 net.ipv4.tcp_congestion_control=bbr
 
-# TCP 缓冲区优化
+# TCP 缓冲区优化（16MB 上限，适合小内存 VPS）
 net.core.rmem_max=16777216
 net.core.wmem_max=16777216
 net.ipv4.tcp_rmem=4096 87380 16777216
 net.ipv4.tcp_wmem=4096 65536 16777216
+```
+
+**配置内容示例（2GB+ 内存版本）：**
+```bash
+# 队列调度算法
+net.core.default_qdisc=fq
+
+# 拥塞控制算法
+net.ipv4.tcp_congestion_control=bbr
+
+# TCP 缓冲区优化（32MB 上限，256KB 默认值，适合高带宽场景）
+net.core.rmem_max=33554432
+net.core.wmem_max=33554432
+net.ipv4.tcp_rmem=4096 262144 33554432
+net.ipv4.tcp_wmem=4096 262144 33554432
+
+# 高级优化（适合高带宽场景）
+net.ipv4.tcp_slow_start_after_idle=0    # 禁用慢启动
+net.ipv4.tcp_mtu_probing=1              # 启用 MTU 探测
+net.core.netdev_max_backlog=16384       # 网络设备队列长度
+net.ipv4.tcp_max_syn_backlog=8192       # SYN 队列长度
 ```
 
 ---
