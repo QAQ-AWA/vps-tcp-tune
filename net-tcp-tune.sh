@@ -127,21 +127,111 @@ add_swap() {
     echo -e "${gl_lv}虚拟内存大小已调整为 ${new_swap}MB${gl_bai}"
 }
 
+calculate_optimal_swap() {
+    # 获取物理内存（MB）
+    local mem_total=$(free -m | awk 'NR==2{print $2}')
+    local recommended_swap
+    local reason
+    
+    echo -e "${gl_kjlan}=== 智能计算虚拟内存大小 ===${gl_bai}"
+    echo ""
+    echo -e "检测到物理内存: ${gl_huang}${mem_total}MB${gl_bai}"
+    echo ""
+    echo "计算过程："
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    
+    # 根据内存大小计算推荐 SWAP
+    if [ "$mem_total" -lt 512 ]; then
+        # < 512MB: SWAP = 1GB（固定）
+        recommended_swap=1024
+        reason="内存极小（< 512MB），固定推荐 1GB"
+        echo "→ 内存 < 512MB"
+        echo "→ 推荐固定 1GB SWAP"
+        
+    elif [ "$mem_total" -lt 1024 ]; then
+        # 512MB ~ 1GB: SWAP = 内存 × 2
+        recommended_swap=$((mem_total * 2))
+        reason="内存较小（512MB-1GB），推荐 2 倍内存"
+        echo "→ 内存在 512MB - 1GB 之间"
+        echo "→ 计算公式: SWAP = 内存 × 2"
+        echo "→ ${mem_total}MB × 2 = ${recommended_swap}MB"
+        
+    elif [ "$mem_total" -lt 2048 ]; then
+        # 1GB ~ 2GB: SWAP = 内存 × 1.5
+        recommended_swap=$((mem_total * 3 / 2))
+        reason="内存适中（1-2GB），推荐 1.5 倍内存"
+        echo "→ 内存在 1GB - 2GB 之间"
+        echo "→ 计算公式: SWAP = 内存 × 1.5"
+        echo "→ ${mem_total}MB × 1.5 = ${recommended_swap}MB"
+        
+    elif [ "$mem_total" -lt 4096 ]; then
+        # 2GB ~ 4GB: SWAP = 内存 × 1
+        recommended_swap=$mem_total
+        reason="内存充足（2-4GB），推荐与内存同大小"
+        echo "→ 内存在 2GB - 4GB 之间"
+        echo "→ 计算公式: SWAP = 内存 × 1"
+        echo "→ ${mem_total}MB × 1 = ${recommended_swap}MB"
+        
+    elif [ "$mem_total" -lt 8192 ]; then
+        # 4GB ~ 8GB: SWAP = 4GB（固定）
+        recommended_swap=4096
+        reason="内存较多（4-8GB），固定推荐 4GB"
+        echo "→ 内存在 4GB - 8GB 之间"
+        echo "→ 固定推荐 4GB SWAP"
+        
+    else
+        # >= 8GB: SWAP = 4GB（固定）
+        recommended_swap=4096
+        reason="内存充裕（≥ 8GB），固定推荐 4GB"
+        echo "→ 内存 ≥ 8GB"
+        echo "→ 固定推荐 4GB SWAP"
+    fi
+    
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo ""
+    echo -e "${gl_lv}计算结果：${gl_bai}"
+    echo -e "  物理内存:   ${gl_huang}${mem_total}MB${gl_bai}"
+    echo -e "  推荐 SWAP:  ${gl_huang}${recommended_swap}MB${gl_bai}"
+    echo -e "  总可用内存: ${gl_huang}$((mem_total + recommended_swap))MB${gl_bai}"
+    echo ""
+    echo -e "${gl_zi}推荐理由: ${reason}${gl_bai}"
+    echo ""
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo ""
+    
+    # 确认是否应用
+    read -e -p "$(echo -e "${gl_huang}是否应用此配置？(Y/N): ${gl_bai}")" confirm
+    
+    case "$confirm" in
+        [Yy])
+            add_swap "$recommended_swap"
+            return 0
+            ;;
+        *)
+            echo "已取消"
+            sleep 2
+            return 1
+            ;;
+    esac
+}
+
 manage_swap() {
     while true; do
         clear
         echo -e "${gl_kjlan}=== 虚拟内存管理 ===${gl_bai}"
         
+        local mem_total=$(free -m | awk 'NR==2{print $2}')
         local swap_used=$(free -m | awk 'NR==3{print $3}')
         local swap_total=$(free -m | awk 'NR==3{print $2}')
         local swap_info=$(free -m | awk 'NR==3{used=$3; total=$2; if (total == 0) {percentage=0} else {percentage=used*100/total}; printf "%dM/%dM (%d%%)", used, total, percentage}')
         
+        echo -e "物理内存:     ${gl_huang}${mem_total}MB${gl_bai}"
         echo -e "当前虚拟内存: ${gl_huang}$swap_info${gl_bai}"
         echo "------------------------------------------------"
-        echo "1. 分配 1024M (1GB)"
-        echo "2. 分配 2048M (2GB)"
-        echo "3. 分配 4096M (4GB)"
-        echo "4. 自定义大小"
+        echo "1. 分配 1024M (1GB) - 固定配置"
+        echo "2. 分配 2048M (2GB) - 固定配置"
+        echo "3. 分配 4096M (4GB) - 固定配置"
+        echo "4. 智能计算推荐值 - 自动计算最佳配置"
         echo "0. 返回主菜单"
         echo "------------------------------------------------"
         read -e -p "请输入选择: " choice
@@ -160,13 +250,9 @@ manage_swap() {
                 break_end
                 ;;
             4)
-                read -e -p "请输入虚拟内存大小（单位 MB）: " new_swap
-                if [[ "$new_swap" =~ ^[0-9]+$ ]] && [ "$new_swap" -gt 0 ]; then
-                    add_swap "$new_swap"
+                calculate_optimal_swap
+                if [ $? -eq 0 ]; then
                     break_end
-                else
-                    echo -e "${gl_hong}错误: 请输入有效的数字${gl_bai}"
-                    sleep 2
                 fi
                 ;;
             0)
@@ -548,88 +634,6 @@ install_xanmod_kernel() {
     return 0
 }
 
-#=============================================================================
-# 队列算法配置菜单
-#=============================================================================
-
-configure_bbr_qdisc() {
-    while true; do
-        clear
-        check_bbr_status
-        
-        echo ""
-        echo -e "${gl_kjlan}=== BBR v3 队列算法配置 ===${gl_bai}"
-        echo "------------------------------------------------"
-        echo -e "${gl_huang}选择最适合您场景的队列算法：${gl_bai}"
-        echo ""
-        echo "1. FQ (Fair Queue)"
-        echo "   └─ 通用场景，高吞吐量"
-        echo "   └─ 适合：Web 服务器、API 服务、文件传输"
-        echo ""
-        echo "2. FQ_PIE (Flow Queue PIE)"
-        echo "   └─ 超低延迟，主动拥塞控制"
-        echo "   └─ 适合：游戏服务器、实时视频、VoIP"
-        echo ""
-        echo "3. CAKE (Common Applications Kept Enhanced)"
-        echo "   └─ 智能流量整形，自动优先级"
-        echo "   └─ 适合：VPN 服务器、多用户共享、家庭网络"
-        echo ""
-        echo "4. 查看详细对比"
-        echo "0. 返回主菜单"
-        echo "------------------------------------------------"
-        read -e -p "请选择 (0-4): " qdisc_choice
-        
-        case $qdisc_choice in
-            1)
-                bbr_configure "fq" "公平排队，按流分配带宽，BBR 标准配对"
-                break_end
-                ;;
-            2)
-                bbr_configure "fq_pie" "主动拥塞管理，延迟降低 70%，游戏专用"
-                break_end
-                ;;
-            3)
-                bbr_configure "cake" "智能整形，自动识别游戏/视频流量，多用户优化"
-                break_end
-                ;;
-            4)
-                show_qdisc_comparison
-                ;;
-            0)
-                return
-                ;;
-            *)
-                echo "无效选择"
-                sleep 2
-                ;;
-        esac
-    done
-}
-
-show_qdisc_comparison() {
-    clear
-    echo -e "${gl_kjlan}=== 队列算法性能对比 ===${gl_bai}"
-    echo ""
-    echo "┌──────────┬─────────┬─────────┬────────────────────┐"
-    echo "│ 算法     │ 延迟    │ 吞吐量  │ 最佳场景           │"
-    echo "├──────────┼─────────┼─────────┼────────────────────┤"
-    echo "│ FQ       │ 中等    │ ★★★★★ │ 通用高性能服务器   │"
-    echo "│ FQ_PIE   │ 极低    │ ★★★★☆ │ 游戏/实时应用      │"
-    echo "│ CAKE     │ 低      │ ★★★★☆ │ VPN/多用户场景     │"
-    echo "│ pfifo*   │ 高      │ ★★☆☆☆ │ 不推荐             │"
-    echo "└──────────┴─────────┴─────────┴────────────────────┘"
-    echo ""
-    echo "* pfifo_fast 是系统默认，不适合 BBR，性能差"
-    echo ""
-    echo -e "${gl_huang}性能测试数据（200ms RTT 跨国链路）：${gl_bai}"
-    echo "  默认 + Cubic:      50 Mbps，延迟 200ms"
-    echo "  BBR (无队列):     120 Mbps，延迟 180ms"
-    echo "  BBR + FQ:         150 Mbps，延迟 150ms"
-    echo "  BBR + FQ_PIE:     140 Mbps，延迟  90ms ⭐"
-    echo "  BBR + CAKE:       145 Mbps，延迟 120ms"
-    echo ""
-    break_end
-}
 
 #=============================================================================
 # 详细状态显示
@@ -710,18 +714,15 @@ show_main_menu() {
     
     echo ""
     echo -e "${gl_kjlan}[BBR 配置]${gl_bai}"
-    echo "3. 配置 BBR 队列算法（推荐）"
-    echo "4. 快速启用 BBR + FQ（≤1GB 内存）"
-    echo "5. 快速启用 BBR + FQ（2GB+ 内存）"
-    echo "6. 快速启用 BBR + FQ_PIE（低延迟）"
-    echo "7. 快速启用 BBR + CAKE（智能整形）"
+    echo "3. 快速启用 BBR + FQ（≤1GB 内存）"
+    echo "4. 快速启用 BBR + FQ（2GB+ 内存）"
     echo ""
     echo -e "${gl_kjlan}[系统工具]${gl_bai}"
-    echo "8. 虚拟内存管理"
+    echo "5. 虚拟内存管理"
     echo ""
     echo -e "${gl_kjlan}[系统信息]${gl_bai}"
-    echo "9. 查看详细状态"
-    echo "10. 性能测试建议"
+    echo "6. 查看详细状态"
+    echo "7. 性能测试建议"
     echo ""
     echo "0. 退出脚本"
     echo "------------------------------------------------"
@@ -746,31 +747,20 @@ show_main_menu() {
             fi
             ;;
         3)
-            configure_bbr_qdisc
-            ;;
-        4)
             bbr_configure "fq" "通用场景优化（≤1GB 内存，16MB 缓冲区）"
             break_end
             ;;
-        5)
+        4)
             bbr_configure_2gb "fq" "通用场景优化（2GB+ 内存，32MB 缓冲区）"
             break_end
             ;;
-        6)
-            bbr_configure "fq_pie" "低延迟专用优化"
-            break_end
-            ;;
-        7)
-            bbr_configure "cake" "智能流量整形优化"
-            break_end
-            ;;
-        8)
+        5)
             manage_swap
             ;;
-        9)
+        6)
             show_detailed_status
             ;;
-        10)
+        7)
             show_performance_test
             ;;
         0)
