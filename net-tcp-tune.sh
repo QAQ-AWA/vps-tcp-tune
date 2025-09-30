@@ -434,7 +434,7 @@ apply_tc_fq_now() {
     fi
 }
 
-# fq maxrate 单连接限速
+# fq maxrate 单连接限速（智能计算版本）
 set_fq_maxrate() {
     local rate=$1  # e.g. 280mbit / 500mbit / off
     
@@ -457,6 +457,139 @@ set_fq_maxrate() {
         echo -e "${gl_lv}已为 fq 设置单流上限: $rate${gl_bai}"
         echo -e "${gl_kjlan}提示: 此设置可防止单连接占满带宽，适合多用户场景${gl_bai}"
     fi
+}
+
+# 智能限速：根据目标有效带宽计算实际 maxrate
+set_fq_maxrate_smart() {
+    if ! command -v tc &>/dev/null; then
+        echo -e "${gl_huang}警告: ${gl_bai}未检测到 tc 命令"
+        return 1
+    fi
+    
+    echo -e "${gl_kjlan}=== 智能限速配置 ===${gl_bai}"
+    echo ""
+    echo "说明："
+    echo "  - 目标带宽：实际可用的 TCP 传输速度（扣除重传、协议开销）"
+    echo "  - 实际设置：会自动放大 30-40%，补偿重传和开销"
+    echo ""
+    echo "常见场景推荐："
+    echo "  • 联通 9929（300M 瓶颈）：目标 250 Mbps"
+    echo "  • 电信 CN2（500M 瓶颈）：目标 450 Mbps"
+    echo "  • 移动 CMI（1000M）：目标 900 Mbps"
+    echo ""
+    
+    read -e -p "请输入目标有效带宽（数字，单位 Mbps）: " target_mbps
+    
+    # 验证输入
+    if ! [[ "$target_mbps" =~ ^[0-9]+$ ]]; then
+        echo -e "${gl_hong}错误: 请输入有效的数字${gl_bai}"
+        return 1
+    fi
+    
+    if [ "$target_mbps" -lt 10 ] || [ "$target_mbps" -gt 10000 ]; then
+        echo -e "${gl_hong}错误: 带宽范围应在 10-10000 Mbps 之间${gl_bai}"
+        return 1
+    fi
+    
+    # 智能计算实际需要设置的 maxrate
+    # 系数说明：
+    # - 高丢包链路（9929 等）：1.40 倍（补偿 15-20% 重传 + 5% 协议开销 + 15% 余量）
+    # - 中等链路（CN2 等）：1.30 倍（补偿 5-10% 重传 + 5% 协议开销 + 10% 余量）
+    # - 优质链路（BGP 等）：1.20 倍（补偿 < 5% 重传 + 5% 协议开销 + 10% 余量）
+    
+    echo ""
+    echo "请选择链路类型（影响补偿系数）："
+    echo "1. 高丢包链路（联通 9929、部分 CN2 GT）- 补偿 40%"
+    echo "2. 中等链路（CN2 GIA、部分直连）- 补偿 30%"
+    echo "3. 优质链路（BGP、IPLC、IEPL）- 补偿 20%"
+    echo "4. 自动检测（推荐）"
+    read -e -p "选择（1-4）[默认 4]: " link_type
+    
+    # 默认值
+    link_type=${link_type:-4}
+    
+    case "$link_type" in
+        1)
+            multiplier="1.40"
+            link_desc="高丢包链路"
+            ;;
+        2)
+            multiplier="1.30"
+            link_desc="中等链路"
+            ;;
+        3)
+            multiplier="1.20"
+            link_desc="优质链路"
+            ;;
+        4)
+            # 自动检测：尝试 ping 测试
+            echo ""
+            echo "正在自动检测链路质量..."
+            read -e -p "请输入测试目标 IP（回车跳过自动检测）: " test_ip
+            
+            if [ -n "$test_ip" ] && command -v ping &>/dev/null; then
+                loss=$(ping -c 20 -i 0.2 "$test_ip" 2>/dev/null | grep -oP '\d+(?=% packet loss)')
+                if [ -n "$loss" ]; then
+                    if [ "$loss" -ge 10 ]; then
+                        multiplier="1.40"
+                        link_desc="高丢包链路（检测到 ${loss}% 丢包）"
+                    elif [ "$loss" -ge 5 ]; then
+                        multiplier="1.30"
+                        link_desc="中等链路（检测到 ${loss}% 丢包）"
+                    else
+                        multiplier="1.20"
+                        link_desc="优质链路（检测到 ${loss}% 丢包）"
+                    fi
+                else
+                    multiplier="1.35"
+                    link_desc="中等链路（检测失败，使用默认值）"
+                fi
+            else
+                multiplier="1.35"
+                link_desc="中等链路（未检测，使用默认值）"
+            fi
+            ;;
+        *)
+            echo -e "${gl_hong}无效选择，使用默认值${gl_bai}"
+            multiplier="1.35"
+            link_desc="中等链路"
+            ;;
+    esac
+    
+    # 计算实际 maxrate
+    actual_rate=$(echo "$target_mbps * $multiplier" | bc | awk '{print int($1+0.5)}')
+    
+    echo ""
+    echo -e "${gl_kjlan}=== 计算结果 ===${gl_bai}"
+    echo "链路类型: $link_desc"
+    echo "补偿系数: ${multiplier}x"
+    echo "目标有效带宽: ${target_mbps} Mbps"
+    echo "实际设置 maxrate: ${actual_rate} Mbit"
+    echo ""
+    echo "预期效果："
+    echo "  • TCP 理论带宽: 约 ${actual_rate} Mbps"
+    echo "  • 扣除重传和开销后"
+    echo "  • 实际有效带宽: 约 ${target_mbps} Mbps ✅"
+    echo ""
+    
+    read -e -p "确认应用此配置？(Y/N): " confirm
+    
+    case "$confirm" in
+        [Yy])
+            echo "正在应用配置..."
+            for dev in $(eligible_ifaces); do
+                tc qdisc replace dev "$dev" root fq maxrate "${actual_rate}mbit" 2>/dev/null && \
+                echo "  ✓ $dev: maxrate ${actual_rate}mbit"
+            done
+            echo ""
+            echo -e "${gl_lv}✅ 智能限速配置完成${gl_bai}"
+            echo -e "${gl_kjlan}提示: 建议运行网络测试验证实际效果${gl_bai}"
+            ;;
+        *)
+            echo "已取消配置"
+            return 1
+            ;;
+    esac
 }
 
 # MSS clamp 防分片
@@ -1009,21 +1142,22 @@ show_main_menu() {
     echo ""
     echo -e "${gl_kjlan}[高级优化]${gl_bai}"
     echo "5. 立即应用 fq 到网卡（tc 命令，无需重启）"
-    echo "6. 设置 fq 单连接限速（防单流占满带宽）"
-    echo "7. 取消单连接限速"
-    echo "8. 启用 MSS clamp（防 TCP 分片）"
-    echo "9. 关闭 MSS clamp"
-    echo "10. 并发连接优化（limits + systemd）"
+    echo "6. 🔥 智能限速（输入目标带宽，自动补偿重传）"
+    echo "7. 手动设置 fq 限速（需自行计算）"
+    echo "8. 取消单连接限速"
+    echo "9. 启用 MSS clamp（防 TCP 分片）"
+    echo "10. 关闭 MSS clamp"
+    echo "11. 并发连接优化（limits + systemd）"
     echo ""
     echo -e "${gl_kjlan}[系统工具]${gl_bai}"
-    echo "11. 虚拟内存管理"
+    echo "12. 虚拟内存管理"
     echo ""
     echo -e "${gl_kjlan}[配置诊断]${gl_bai}"
-    echo "12. 配置诊断和修复（检查冲突、验证配置）"
+    echo "13. 配置诊断和修复（检查冲突、验证配置）"
     echo ""
     echo -e "${gl_kjlan}[系统信息]${gl_bai}"
-    echo "13. 查看详细状态"
-    echo "14. 性能测试建议"
+    echo "14. 查看详细状态"
+    echo "15. 性能测试建议"
     echo ""
     echo "0. 退出脚本"
     echo "------------------------------------------------"
@@ -1062,11 +1196,18 @@ show_main_menu() {
             break_end
             ;;
         6)
-            echo -e "${gl_kjlan}=== 设置单连接限速 ===${gl_bai}"
+            set_fq_maxrate_smart
+            break_end
+            ;;
+        7)
+            echo -e "${gl_kjlan}=== 手动设置单连接限速 ===${gl_bai}"
             echo "推荐值参考："
             echo "  - 300Mbps 专线：280mbit"
             echo "  - 500Mbps 专线：480mbit"
             echo "  - 1Gbps 专线：   900mbit"
+            echo ""
+            echo -e "${gl_huang}提示：此为手动模式，不会自动补偿重传${gl_bai}"
+            echo -e "${gl_huang}      如需自动计算，请使用选项 6（智能限速）${gl_bai}"
             echo ""
             read -e -p "请输入限速值（如 280mbit）: " maxrate
             if [ -n "$maxrate" ]; then
@@ -1074,26 +1215,26 @@ show_main_menu() {
             fi
             break_end
             ;;
-        7)
+        8)
             set_fq_maxrate off
             break_end
             ;;
-        8)
+        9)
             apply_mss_clamp enable
             break_end
             ;;
-        9)
+        10)
             apply_mss_clamp disable
             break_end
             ;;
-        10)
+        11)
             tune_limits_and_systemd
             break_end
             ;;
-        11)
+        12)
             manage_swap
             ;;
-        12)
+        13)
             clear
             echo -e "${gl_kjlan}=== BBR 配置诊断和修复 ===${gl_bai}"
             echo ""
@@ -1144,10 +1285,10 @@ show_main_menu() {
             
             break_end
             ;;
-        13)
+        14)
             show_detailed_status
             ;;
-        14)
+        15)
             show_performance_test
             ;;
         0)
@@ -1315,9 +1456,14 @@ main() {
     check_root
     
     # 安装必要依赖（用于高级功能）
-    if ! command -v tc &>/dev/null || ! command -v iptables &>/dev/null; then
+    local missing_tools=""
+    command -v tc &>/dev/null || missing_tools="$missing_tools iproute2"
+    command -v iptables &>/dev/null || missing_tools="$missing_tools iptables"
+    command -v bc &>/dev/null || missing_tools="$missing_tools bc"
+    
+    if [ -n "$missing_tools" ]; then
         echo -e "${gl_huang}检测到缺少必要工具，正在安装...${gl_bai}"
-        install_package iproute2 iptables > /dev/null 2>&1
+        install_package $missing_tools > /dev/null 2>&1
     fi
     
     # 命令行参数支持
