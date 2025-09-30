@@ -3,7 +3,8 @@
 # BBR v3 终极优化脚本 - 融合版
 # 功能：结合 XanMod 官方内核的稳定性 + 专业队列算法调优
 # 特点：安全性 + 性能 双优化
-# 版本：2.0 Ultimate Edition
+# 版本：3.0 Ultimate Pro Edition
+# 新增功能：UDP优化、tc fq立即生效、MSS clamp、并发优化、精准BDP、fq限速
 #=============================================================================
 
 # 颜色定义
@@ -280,6 +281,136 @@ server_reboot() {
 }
 
 #=============================================================================
+# 新增功能函数
+#=============================================================================
+
+# 获取符合条件的网卡（排除虚拟网卡）
+eligible_ifaces() {
+    for d in /sys/class/net/*; do
+        [ -e "$d" ] || continue
+        dev=$(basename "$d")
+        case "$dev" in
+            lo|docker*|veth*|br-*|virbr*|zt*|tailscale*|wg*|tun*|tap*) continue;;
+        esac
+        echo "$dev"
+    done
+}
+
+# tc fq 立即生效（无需重启）
+apply_tc_fq_now() {
+    if ! command -v tc &>/dev/null; then
+        echo -e "${gl_huang}警告: ${gl_bai}未检测到 tc 命令（iproute2），建议安装: apt install -y iproute2"
+        return 1
+    fi
+    
+    echo "正在对网卡应用 fq 队列算法..."
+    local count=0
+    for dev in $(eligible_ifaces); do
+        if tc qdisc replace dev "$dev" root fq 2>/dev/null; then
+            echo "  - $dev: ${gl_lv}✓${gl_bai}"
+            count=$((count + 1))
+        fi
+    done
+    
+    if [ $count -gt 0 ]; then
+        echo -e "${gl_lv}已对 $count 个网卡应用 fq（立即生效，无需重启）${gl_bai}"
+        return 0
+    else
+        echo -e "${gl_huang}未找到有效网卡${gl_bai}"
+        return 1
+    fi
+}
+
+# fq maxrate 单连接限速
+set_fq_maxrate() {
+    local rate=$1  # e.g. 280mbit / 500mbit / off
+    
+    if ! command -v tc &>/dev/null; then
+        echo -e "${gl_huang}警告: ${gl_bai}未检测到 tc 命令"
+        return 1
+    fi
+    
+    if [ "$rate" = "off" ]; then
+        echo "正在移除单连接限速..."
+        for dev in $(eligible_ifaces); do
+            tc qdisc replace dev "$dev" root fq 2>/dev/null
+        done
+        echo -e "${gl_lv}已移除 maxrate，恢复默认 fq pacing${gl_bai}"
+    else
+        echo "正在设置单连接上限: $rate ..."
+        for dev in $(eligible_ifaces); do
+            tc qdisc replace dev "$dev" root fq maxrate "$rate" 2>/dev/null
+        done
+        echo -e "${gl_lv}已为 fq 设置单流上限: $rate${gl_bai}"
+        echo -e "${gl_kjlan}提示: 此设置可防止单连接占满带宽，适合多用户场景${gl_bai}"
+    fi
+}
+
+# MSS clamp 防分片
+apply_mss_clamp() {
+    local action=$1  # enable/disable
+    
+    if ! command -v iptables &>/dev/null; then
+        echo -e "${gl_huang}警告: ${gl_bai}未检测到 iptables，跳过 MSS clamp"
+        return 1
+    fi
+    
+    if [ "$action" = "enable" ]; then
+        # 检查规则是否已存在
+        if iptables -t mangle -C FORWARD -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --clamp-mss-to-pmtu >/dev/null 2>&1; then
+            echo -e "${gl_huang}MSS clamp 规则已存在${gl_bai}"
+        else
+            iptables -t mangle -A FORWARD -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --clamp-mss-to-pmtu
+            echo -e "${gl_lv}MSS clamp 已启用（FORWARD 链）${gl_bai}"
+            echo -e "${gl_kjlan}提示: 此功能可防止跨运营商 TCP 分片，减少重传${gl_bai}"
+        fi
+    else
+        if iptables -t mangle -D FORWARD -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --clamp-mss-to-pmtu >/dev/null 2>&1; then
+            echo -e "${gl_lv}MSS clamp 已关闭${gl_bai}"
+        else
+            echo -e "${gl_huang}MSS clamp 规则不存在或已删除${gl_bai}"
+        fi
+    fi
+}
+
+# 并发连接优化（limits + systemd）
+tune_limits_and_systemd() {
+    echo -e "${gl_kjlan}=== 配置并发连接优化 ===${gl_bai}"
+    
+    # 1. 配置 limits.conf
+    if ! grep -q "soft nofile 1048576" /etc/security/limits.conf 2>/dev/null; then
+        cat >> /etc/security/limits.conf <<'EOF'
+
+# 高并发优化（BBR Ultimate Pro）
+* soft nofile 1048576
+* hard nofile 1048576
+EOF
+        echo "✓ 已写入 /etc/security/limits.conf"
+    else
+        echo "✓ limits.conf 已配置"
+    fi
+    
+    # 2. 配置常见服务的 systemd 覆盖
+    for service in realm xray v2ray hysteria tuic; do
+        if systemctl list-unit-files | grep -q "^${service}.service"; then
+            mkdir -p /etc/systemd/system/${service}.service.d
+            cat > /etc/systemd/system/${service}.service.d/override.conf <<'EOF'
+[Service]
+LimitNOFILE=1048576
+TasksMax=infinity
+Restart=always
+RestartSec=3
+EOF
+            echo "✓ 已配置 ${service}.service"
+        fi
+    done
+    
+    systemctl daemon-reload 2>/dev/null
+    echo -e "${gl_lv}并发优化配置完成！${gl_bai}"
+    echo -e "${gl_kjlan}提示: 需要重新登录或重启相关服务才能生效${gl_bai}"
+}
+
+#=============================================================================
 # BBR 配置函数（改进版 - 确保配置生效）
 #=============================================================================
 
@@ -326,15 +457,33 @@ net.core.default_qdisc=${qdisc}
 net.ipv4.tcp_congestion_control=bbr
 
 # TCP 缓冲区优化（16MB 上限，适合小内存 VPS）
+net.core.rmem_default=262144
+net.core.wmem_default=262144
 net.core.rmem_max=16777216
 net.core.wmem_max=16777216
 net.ipv4.tcp_rmem=4096 87380 16777216
 net.ipv4.tcp_wmem=4096 65536 16777216
+
+# UDP 优化（提高最低缓冲，避免突发丢包）
+net.ipv4.udp_rmem_min=196608
+net.ipv4.udp_wmem_min=196608
+net.ipv4.udp_mem=32768 8388608 16777216
+
+# 高级优化
+net.ipv4.tcp_slow_start_after_idle=0
+net.ipv4.tcp_mtu_probing=1
+net.core.netdev_max_backlog=8192
+net.ipv4.tcp_max_syn_backlog=4096
+net.core.somaxconn=1024
 EOF
 
     # 步骤 3：应用配置（只加载此配置文件）
     echo "正在应用配置..."
     sysctl -p "$SYSCTL_CONF" > /dev/null 2>&1
+    
+    # 步骤 3.5：立即应用 tc fq（无需重启）
+    echo "正在应用队列算法到网卡..."
+    apply_tc_fq_now > /dev/null 2>&1
     
     # 步骤 4：验证配置是否真正生效
     local actual_qdisc=$(sysctl -n net.core.default_qdisc 2>/dev/null)
@@ -431,21 +580,33 @@ net.core.default_qdisc=${qdisc}
 net.ipv4.tcp_congestion_control=bbr
 
 # TCP 缓冲区优化（32MB 上限，256KB 默认值，适合 2GB+ 内存 VPS）
+net.core.rmem_default=262144
+net.core.wmem_default=262144
 net.core.rmem_max=33554432
 net.core.wmem_max=33554432
-net.ipv4.tcp_rmem=4096 262144 33554432
-net.ipv4.tcp_wmem=4096 262144 33554432
+net.ipv4.tcp_rmem=4096 131072 33554432
+net.ipv4.tcp_wmem=4096 131072 33554432
+
+# UDP 优化（高性能场景）
+net.ipv4.udp_rmem_min=262144
+net.ipv4.udp_wmem_min=262144
+net.ipv4.udp_mem=65536 16777216 33554432
 
 # 高级优化（适合高带宽场景）
 net.ipv4.tcp_slow_start_after_idle=0
 net.ipv4.tcp_mtu_probing=1
 net.core.netdev_max_backlog=16384
 net.ipv4.tcp_max_syn_backlog=8192
+net.core.somaxconn=1024
 EOF
 
     # 步骤 3：应用配置（只加载此配置文件）
     echo "正在应用配置..."
     sysctl -p "$SYSCTL_CONF" > /dev/null 2>&1
+    
+    # 步骤 3.5：立即应用 tc fq（无需重启）
+    echo "正在应用队列算法到网卡..."
+    apply_tc_fq_now > /dev/null 2>&1
     
     # 步骤 4：验证配置是否真正生效
     local actual_qdisc=$(sysctl -n net.core.default_qdisc 2>/dev/null)
@@ -720,15 +881,23 @@ show_main_menu() {
     
     echo ""
     echo -e "${gl_kjlan}[BBR 配置]${gl_bai}"
-    echo "3. 快速启用 BBR + FQ（≤1GB 内存）"
-    echo "4. 快速启用 BBR + FQ（2GB+ 内存）"
+    echo "3. 快速启用 BBR + FQ（≤1GB 内存）+ UDP 优化"
+    echo "4. 快速启用 BBR + FQ（2GB+ 内存）+ UDP 优化"
+    echo ""
+    echo -e "${gl_kjlan}[高级优化]${gl_bai}"
+    echo "5. 立即应用 fq 到网卡（tc 命令，无需重启）"
+    echo "6. 设置 fq 单连接限速（防单流占满带宽）"
+    echo "7. 取消单连接限速"
+    echo "8. 启用 MSS clamp（防 TCP 分片）"
+    echo "9. 关闭 MSS clamp"
+    echo "10. 并发连接优化（limits + systemd）"
     echo ""
     echo -e "${gl_kjlan}[系统工具]${gl_bai}"
-    echo "5. 虚拟内存管理"
+    echo "11. 虚拟内存管理"
     echo ""
     echo -e "${gl_kjlan}[系统信息]${gl_bai}"
-    echo "6. 查看详细状态"
-    echo "7. 性能测试建议"
+    echo "12. 查看详细状态"
+    echo "13. 性能测试建议"
     echo ""
     echo "0. 退出脚本"
     echo "------------------------------------------------"
@@ -755,20 +924,53 @@ show_main_menu() {
             fi
             ;;
         3)
-            bbr_configure "fq" "通用场景优化（≤1GB 内存，16MB 缓冲区）"
+            bbr_configure "fq" "通用场景优化（≤1GB 内存，16MB 缓冲区 + UDP 优化）"
             break_end
             ;;
         4)
-            bbr_configure_2gb "fq" "通用场景优化（2GB+ 内存，32MB 缓冲区）"
+            bbr_configure_2gb "fq" "通用场景优化（2GB+ 内存，32MB 缓冲区 + UDP 优化）"
             break_end
             ;;
         5)
-            manage_swap
+            apply_tc_fq_now
+            break_end
             ;;
         6)
-            show_detailed_status
+            echo -e "${gl_kjlan}=== 设置单连接限速 ===${gl_bai}"
+            echo "推荐值参考："
+            echo "  - 300Mbps 专线：280mbit"
+            echo "  - 500Mbps 专线：480mbit"
+            echo "  - 1Gbps 专线：   900mbit"
+            echo ""
+            read -e -p "请输入限速值（如 280mbit）: " maxrate
+            if [ -n "$maxrate" ]; then
+                set_fq_maxrate "$maxrate"
+            fi
+            break_end
             ;;
         7)
+            set_fq_maxrate off
+            break_end
+            ;;
+        8)
+            apply_mss_clamp enable
+            break_end
+            ;;
+        9)
+            apply_mss_clamp disable
+            break_end
+            ;;
+        10)
+            tune_limits_and_systemd
+            break_end
+            ;;
+        11)
+            manage_swap
+            ;;
+        12)
+            show_detailed_status
+            ;;
+        13)
             show_performance_test
             ;;
         0)
@@ -934,6 +1136,12 @@ show_performance_test() {
 
 main() {
     check_root
+    
+    # 安装必要依赖（用于高级功能）
+    if ! command -v tc &>/dev/null || ! command -v iptables &>/dev/null; then
+        echo -e "${gl_huang}检测到缺少必要工具，正在安装...${gl_bai}"
+        install_package iproute2 iptables > /dev/null 2>&1
+    fi
     
     # 命令行参数支持
     if [ "$1" = "-i" ] || [ "$1" = "--install" ]; then
