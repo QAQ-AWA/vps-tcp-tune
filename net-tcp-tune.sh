@@ -13,6 +13,8 @@ gl_huang='\033[33m'
 gl_bai='\033[0m'
 gl_kjlan='\033[96m'
 gl_zi='\033[35m'
+gl_hui='\e[37m'
+gl_lan='\033[34m'
 
 # GitHub 代理设置
 gh_proxy="https://"
@@ -277,6 +279,458 @@ server_reboot() {
             echo "已取消，请稍后手动执行: reboot"
             ;;
     esac
+}
+
+#=============================================================================
+# 系统信息展示相关函数
+#=============================================================================
+
+# 获取IP地址信息
+ip_address() {
+    get_public_ip() {
+        curl -s https://ipinfo.io/ip && echo
+    }
+
+    get_local_ip() {
+        ip route get 8.8.8.8 2>/dev/null | grep -oP 'src \K[^ ]+' || \
+        hostname -I 2>/dev/null | awk '{print $1}' || \
+        ifconfig 2>/dev/null | grep -E 'inet [0-9]' | grep -v '127.0.0.1' | awk '{print $2}' | head -n1
+    }
+
+    public_ip=$(get_public_ip)
+    isp_info=$(curl -s --max-time 3 http://ipinfo.io/org)
+
+    if echo "$isp_info" | grep -Eiq 'mobile|unicom|telecom'; then
+        ipv4_address=$(get_local_ip)
+    else
+        ipv4_address="$public_ip"
+    fi
+
+    ipv6_address=$(curl -s --max-time 1 https://v6.ipinfo.io/ip && echo)
+}
+
+# 获取网络流量统计
+output_status() {
+    output=$(awk 'BEGIN { rx_total = 0; tx_total = 0 }
+        $1 ~ /^(eth|ens|enp|eno)[0-9]+/ {
+            rx_total += $2
+            tx_total += $10
+        }
+        END {
+            rx_units = "Bytes";
+            tx_units = "Bytes";
+            if (rx_total > 1024) { rx_total /= 1024; rx_units = "K"; }
+            if (rx_total > 1024) { rx_total /= 1024; rx_units = "M"; }
+            if (rx_total > 1024) { rx_total /= 1024; rx_units = "G"; }
+
+            if (tx_total > 1024) { tx_total /= 1024; tx_units = "K"; }
+            if (tx_total > 1024) { tx_total /= 1024; tx_units = "M"; }
+            if (tx_total > 1024) { tx_total /= 1024; tx_units = "G"; }
+
+            printf("%.2f%s %.2f%s\n", rx_total, rx_units, tx_total, tx_units);
+        }' /proc/net/dev)
+
+    rx=$(echo "$output" | awk '{print $1}')
+    tx=$(echo "$output" | awk '{print $2}')
+}
+
+# 获取当前时区
+current_timezone() {
+    if grep -q 'Alpine' /etc/issue; then
+        date +"%Z %z"
+    else
+        timedatectl | grep "Time zone" | awk '{print $3}'
+    fi
+}
+
+# 系统信息查询主函数
+show_system_info() {
+    clear
+    echo -e "${gl_kjlan}=== 系统信息查询 ===${gl_bai}"
+    
+    ip_address
+    
+    local cpu_info=$(lscpu | awk -F': +' '/Model name:/ {print $2; exit}')
+    local cpu_usage_percent=$(awk '{u=$2+$4; t=$2+$4+$5; if (NR==1){u1=u; t1=t;} else printf "%.0f\n", (($2+$4-u1) * 100 / (t-t1))}' \
+        <(grep 'cpu ' /proc/stat) <(sleep 1; grep 'cpu ' /proc/stat))
+    local cpu_cores=$(nproc)
+    local cpu_freq=$(cat /proc/cpuinfo | grep "MHz" | head -n 1 | awk '{printf "%.1f GHz\n", $4/1000}')
+    local mem_info=$(free -b | awk 'NR==2{printf "%.2f/%.2fM (%.2f%%)", $3/1024/1024, $2/1024/1024, $3*100/$2}')
+    local disk_info=$(df -h | awk '$NF=="/"{printf "%s/%s (%s)", $3, $2, $5}')
+    
+    local ipinfo=$(curl -s ipinfo.io)
+    local country=$(echo "$ipinfo" | grep 'country' | awk -F': ' '{print $2}' | tr -d '",')
+    local city=$(echo "$ipinfo" | grep 'city' | awk -F': ' '{print $2}' | tr -d '",')
+    local isp_info=$(echo "$ipinfo" | grep 'org' | awk -F': ' '{print $2}' | tr -d '",')
+    
+    local load=$(uptime | awk '{print $(NF-2), $(NF-1), $NF}')
+    local dns_addresses=$(awk '/^nameserver/{printf "%s ", $2} END {print ""}' /etc/resolv.conf)
+    local cpu_arch=$(uname -m)
+    local hostname=$(uname -n)
+    local kernel_version=$(uname -r)
+    local congestion_algorithm=$(sysctl -n net.ipv4.tcp_congestion_control)
+    local queue_algorithm=$(sysctl -n net.core.default_qdisc)
+    local os_info=$(grep PRETTY_NAME /etc/os-release | cut -d '=' -f2 | tr -d '"')
+    
+    output_status
+    
+    local current_time=$(date "+%Y-%m-%d %I:%M %p")
+    local swap_info=$(free -m | awk 'NR==3{used=$3; total=$2; if (total == 0) {percentage=0} else {percentage=used*100/total}; printf "%dM/%dM (%d%%)", used, total, percentage}')
+    local runtime=$(cat /proc/uptime | awk -F. '{run_days=int($1 / 86400);run_hours=int(($1 % 86400) / 3600);run_minutes=int(($1 % 3600) / 60); if (run_days > 0) printf("%d天 ", run_days); if (run_hours > 0) printf("%d时 ", run_hours); printf("%d分\n", run_minutes)}')
+    local timezone=$(current_timezone)
+
+    echo ""
+    echo -e "系统信息查询"
+    echo -e "${gl_kjlan}-------------"
+    echo -e "${gl_kjlan}主机名:       ${gl_bai}$hostname"
+    echo -e "${gl_kjlan}系统版本:     ${gl_bai}$os_info"
+    echo -e "${gl_kjlan}Linux版本:    ${gl_bai}$kernel_version"
+    echo -e "${gl_kjlan}-------------"
+    echo -e "${gl_kjlan}CPU架构:      ${gl_bai}$cpu_arch"
+    echo -e "${gl_kjlan}CPU型号:      ${gl_bai}$cpu_info"
+    echo -e "${gl_kjlan}CPU核心数:    ${gl_bai}$cpu_cores"
+    echo -e "${gl_kjlan}CPU频率:      ${gl_bai}$cpu_freq"
+    echo -e "${gl_kjlan}-------------"
+    echo -e "${gl_kjlan}CPU占用:      ${gl_bai}$cpu_usage_percent%"
+    echo -e "${gl_kjlan}系统负载:     ${gl_bai}$load"
+    echo -e "${gl_kjlan}物理内存:     ${gl_bai}$mem_info"
+    echo -e "${gl_kjlan}虚拟内存:     ${gl_bai}$swap_info"
+    echo -e "${gl_kjlan}硬盘占用:     ${gl_bai}$disk_info"
+    echo -e "${gl_kjlan}-------------"
+    echo -e "${gl_kjlan}总接收:       ${gl_bai}$rx"
+    echo -e "${gl_kjlan}总发送:       ${gl_bai}$tx"
+    echo -e "${gl_kjlan}-------------"
+    echo -e "${gl_kjlan}网络算法:     ${gl_bai}$congestion_algorithm $queue_algorithm"
+    echo -e "${gl_kjlan}-------------"
+    echo -e "${gl_kjlan}运营商:       ${gl_bai}$isp_info"
+    if [ -n "$ipv4_address" ]; then
+        echo -e "${gl_kjlan}IPv4地址:     ${gl_bai}$ipv4_address"
+    fi
+    if [ -n "$ipv6_address" ]; then
+        echo -e "${gl_kjlan}IPv6地址:     ${gl_bai}$ipv6_address"
+    fi
+    echo -e "${gl_kjlan}DNS地址:      ${gl_bai}$dns_addresses"
+    echo -e "${gl_kjlan}地理位置:     ${gl_bai}$country $city"
+    echo -e "${gl_kjlan}系统时间:     ${gl_bai}$timezone $current_time"
+    echo -e "${gl_kjlan}-------------"
+    echo -e "${gl_kjlan}运行时长:     ${gl_bai}$runtime"
+    echo ""
+    
+    break_end
+}
+
+#=============================================================================
+# 内核参数优化模式函数
+#=============================================================================
+
+# 高性能模式优化函数
+optimize_high_performance() {
+    local tiaoyou_moshi="高性能优化模式"
+    echo -e "${gl_lv}切换到${tiaoyou_moshi}...${gl_bai}"
+
+    echo -e "${gl_lv}优化文件描述符...${gl_bai}"
+    ulimit -n 65535
+
+    echo -e "${gl_lv}优化虚拟内存...${gl_bai}"
+    sysctl -w vm.swappiness=10 2>/dev/null
+    sysctl -w vm.dirty_ratio=15 2>/dev/null
+    sysctl -w vm.dirty_background_ratio=5 2>/dev/null
+    sysctl -w vm.overcommit_memory=1 2>/dev/null
+    sysctl -w vm.min_free_kbytes=65536 2>/dev/null
+
+    echo -e "${gl_lv}优化网络设置...${gl_bai}"
+    sysctl -w net.core.rmem_max=16777216 2>/dev/null
+    sysctl -w net.core.wmem_max=16777216 2>/dev/null
+    sysctl -w net.core.netdev_max_backlog=250000 2>/dev/null
+    sysctl -w net.core.somaxconn=4096 2>/dev/null
+    sysctl -w net.ipv4.tcp_rmem='4096 87380 16777216' 2>/dev/null
+    sysctl -w net.ipv4.tcp_wmem='4096 65536 16777216' 2>/dev/null
+    sysctl -w net.ipv4.tcp_congestion_control=bbr 2>/dev/null
+    sysctl -w net.ipv4.tcp_max_syn_backlog=8192 2>/dev/null
+    sysctl -w net.ipv4.tcp_tw_reuse=1 2>/dev/null
+    sysctl -w net.ipv4.ip_local_port_range='1024 65535' 2>/dev/null
+
+    echo -e "${gl_lv}优化缓存管理...${gl_bai}"
+    sysctl -w vm.vfs_cache_pressure=50 2>/dev/null
+
+    echo -e "${gl_lv}优化CPU设置...${gl_bai}"
+    sysctl -w kernel.sched_autogroup_enabled=0 2>/dev/null
+
+    echo -e "${gl_lv}其他优化...${gl_bai}"
+    # 禁用透明大页面，减少延迟
+    echo never > /sys/kernel/mm/transparent_hugepage/enabled
+    # 禁用 NUMA balancing
+    sysctl -w kernel.numa_balancing=0 2>/dev/null
+
+    echo -e "${gl_lv}✅ 高性能模式优化完成！${gl_bai}"
+}
+
+# 均衡模式优化函数
+optimize_balanced() {
+    echo -e "${gl_lv}切换到均衡模式...${gl_bai}"
+
+    echo -e "${gl_lv}优化文件描述符...${gl_bai}"
+    ulimit -n 32768
+
+    echo -e "${gl_lv}优化虚拟内存...${gl_bai}"
+    sysctl -w vm.swappiness=30 2>/dev/null
+    sysctl -w vm.dirty_ratio=20 2>/dev/null
+    sysctl -w vm.dirty_background_ratio=10 2>/dev/null
+    sysctl -w vm.overcommit_memory=0 2>/dev/null
+    sysctl -w vm.min_free_kbytes=32768 2>/dev/null
+
+    echo -e "${gl_lv}优化网络设置...${gl_bai}"
+    sysctl -w net.core.rmem_max=8388608 2>/dev/null
+    sysctl -w net.core.wmem_max=8388608 2>/dev/null
+    sysctl -w net.core.netdev_max_backlog=125000 2>/dev/null
+    sysctl -w net.core.somaxconn=2048 2>/dev/null
+    sysctl -w net.ipv4.tcp_rmem='4096 87380 8388608' 2>/dev/null
+    sysctl -w net.ipv4.tcp_wmem='4096 32768 8388608' 2>/dev/null
+    sysctl -w net.ipv4.tcp_congestion_control=bbr 2>/dev/null
+    sysctl -w net.ipv4.tcp_max_syn_backlog=4096 2>/dev/null
+    sysctl -w net.ipv4.tcp_tw_reuse=1 2>/dev/null
+    sysctl -w net.ipv4.ip_local_port_range='1024 49151' 2>/dev/null
+
+    echo -e "${gl_lv}优化缓存管理...${gl_bai}"
+    sysctl -w vm.vfs_cache_pressure=75 2>/dev/null
+
+    echo -e "${gl_lv}优化CPU设置...${gl_bai}"
+    sysctl -w kernel.sched_autogroup_enabled=1 2>/dev/null
+
+    echo -e "${gl_lv}其他优化...${gl_bai}"
+    # 还原透明大页面
+    echo always > /sys/kernel/mm/transparent_hugepage/enabled
+    # 还原 NUMA balancing
+    sysctl -w kernel.numa_balancing=1 2>/dev/null
+
+    echo -e "${gl_lv}✅ 均衡模式优化完成！${gl_bai}"
+}
+
+# 网站优化模式函数
+optimize_web_server() {
+    echo -e "${gl_lv}切换到网站搭建优化模式...${gl_bai}"
+
+    echo -e "${gl_lv}优化文件描述符...${gl_bai}"
+    ulimit -n 65535
+
+    echo -e "${gl_lv}优化虚拟内存...${gl_bai}"
+    sysctl -w vm.swappiness=10 2>/dev/null
+    sysctl -w vm.dirty_ratio=20 2>/dev/null
+    sysctl -w vm.dirty_background_ratio=10 2>/dev/null
+    sysctl -w vm.overcommit_memory=1 2>/dev/null
+    sysctl -w vm.min_free_kbytes=65536 2>/dev/null
+
+    echo -e "${gl_lv}优化网络设置...${gl_bai}"
+    sysctl -w net.core.rmem_max=16777216 2>/dev/null
+    sysctl -w net.core.wmem_max=16777216 2>/dev/null
+    sysctl -w net.core.netdev_max_backlog=5000 2>/dev/null
+    sysctl -w net.core.somaxconn=4096 2>/dev/null
+    sysctl -w net.ipv4.tcp_rmem='4096 87380 16777216' 2>/dev/null
+    sysctl -w net.ipv4.tcp_wmem='4096 65536 16777216' 2>/dev/null
+    sysctl -w net.ipv4.tcp_congestion_control=bbr 2>/dev/null
+    sysctl -w net.ipv4.tcp_max_syn_backlog=8192 2>/dev/null
+    sysctl -w net.ipv4.tcp_tw_reuse=1 2>/dev/null
+    sysctl -w net.ipv4.ip_local_port_range='1024 65535' 2>/dev/null
+
+    echo -e "${gl_lv}优化缓存管理...${gl_bai}"
+    sysctl -w vm.vfs_cache_pressure=50 2>/dev/null
+
+    echo -e "${gl_lv}优化CPU设置...${gl_bai}"
+    sysctl -w kernel.sched_autogroup_enabled=0 2>/dev/null
+
+    echo -e "${gl_lv}其他优化...${gl_bai}"
+    # 禁用透明大页面，减少延迟
+    echo never > /sys/kernel/mm/transparent_hugepage/enabled
+    # 禁用 NUMA balancing
+    sysctl -w kernel.numa_balancing=0 2>/dev/null
+
+    echo -e "${gl_lv}✅ 网站优化模式完成！${gl_bai}"
+}
+
+# 直播优化模式函数
+optimize_live_streaming() {
+    local tiaoyou_moshi="直播优化模式"
+    echo -e "${gl_lv}切换到${tiaoyou_moshi}...${gl_bai}"
+
+    echo -e "${gl_lv}优化文件描述符...${gl_bai}"
+    ulimit -n 65535
+
+    echo -e "${gl_lv}优化虚拟内存...${gl_bai}"
+    sysctl -w vm.swappiness=10 2>/dev/null
+    sysctl -w vm.dirty_ratio=15 2>/dev/null
+    sysctl -w vm.dirty_background_ratio=5 2>/dev/null
+    sysctl -w vm.overcommit_memory=1 2>/dev/null
+    sysctl -w vm.min_free_kbytes=65536 2>/dev/null
+
+    echo -e "${gl_lv}优化网络设置...${gl_bai}"
+    sysctl -w net.core.rmem_max=16777216 2>/dev/null
+    sysctl -w net.core.wmem_max=16777216 2>/dev/null
+    sysctl -w net.core.netdev_max_backlog=250000 2>/dev/null
+    sysctl -w net.core.somaxconn=4096 2>/dev/null
+    sysctl -w net.ipv4.tcp_rmem='4096 87380 16777216' 2>/dev/null
+    sysctl -w net.ipv4.tcp_wmem='4096 65536 16777216' 2>/dev/null
+    sysctl -w net.ipv4.tcp_congestion_control=bbr 2>/dev/null
+    sysctl -w net.ipv4.tcp_max_syn_backlog=8192 2>/dev/null
+    sysctl -w net.ipv4.tcp_tw_reuse=1 2>/dev/null
+    sysctl -w net.ipv4.ip_local_port_range='1024 65535' 2>/dev/null
+
+    echo -e "${gl_lv}优化缓存管理...${gl_bai}"
+    sysctl -w vm.vfs_cache_pressure=50 2>/dev/null
+
+    echo -e "${gl_lv}优化CPU设置...${gl_bai}"
+    sysctl -w kernel.sched_autogroup_enabled=0 2>/dev/null
+
+    echo -e "${gl_lv}其他优化...${gl_bai}"
+    # 禁用透明大页面，减少延迟
+    echo never > /sys/kernel/mm/transparent_hugepage/enabled
+    # 禁用 NUMA balancing
+    sysctl -w kernel.numa_balancing=0 2>/dev/null
+
+    echo -e "${gl_lv}✅ 直播优化模式完成！${gl_bai}"
+}
+
+# 游戏服优化模式函数
+optimize_game_server() {
+    local tiaoyou_moshi="游戏服优化模式"
+    echo -e "${gl_lv}切换到${tiaoyou_moshi}...${gl_bai}"
+
+    echo -e "${gl_lv}优化文件描述符...${gl_bai}"
+    ulimit -n 65535
+
+    echo -e "${gl_lv}优化虚拟内存...${gl_bai}"
+    sysctl -w vm.swappiness=10 2>/dev/null
+    sysctl -w vm.dirty_ratio=15 2>/dev/null
+    sysctl -w vm.dirty_background_ratio=5 2>/dev/null
+    sysctl -w vm.overcommit_memory=1 2>/dev/null
+    sysctl -w vm.min_free_kbytes=65536 2>/dev/null
+
+    echo -e "${gl_lv}优化网络设置...${gl_bai}"
+    sysctl -w net.core.rmem_max=16777216 2>/dev/null
+    sysctl -w net.core.wmem_max=16777216 2>/dev/null
+    sysctl -w net.core.netdev_max_backlog=250000 2>/dev/null
+    sysctl -w net.core.somaxconn=4096 2>/dev/null
+    sysctl -w net.ipv4.tcp_rmem='4096 87380 16777216' 2>/dev/null
+    sysctl -w net.ipv4.tcp_wmem='4096 65536 16777216' 2>/dev/null
+    sysctl -w net.ipv4.tcp_congestion_control=bbr 2>/dev/null
+    sysctl -w net.ipv4.tcp_max_syn_backlog=8192 2>/dev/null
+    sysctl -w net.ipv4.tcp_tw_reuse=1 2>/dev/null
+    sysctl -w net.ipv4.ip_local_port_range='1024 65535' 2>/dev/null
+
+    echo -e "${gl_lv}优化缓存管理...${gl_bai}"
+    sysctl -w vm.vfs_cache_pressure=50 2>/dev/null
+
+    echo -e "${gl_lv}优化CPU设置...${gl_bai}"
+    sysctl -w kernel.sched_autogroup_enabled=0 2>/dev/null
+
+    echo -e "${gl_lv}其他优化...${gl_bai}"
+    # 禁用透明大页面，减少延迟
+    echo never > /sys/kernel/mm/transparent_hugepage/enabled
+    # 禁用 NUMA balancing
+    sysctl -w kernel.numa_balancing=0 2>/dev/null
+
+    echo -e "${gl_lv}✅ 游戏服优化模式完成！${gl_bai}"
+}
+
+# 还原默认设置函数
+restore_defaults() {
+    echo -e "${gl_lv}还原到默认设置...${gl_bai}"
+
+    echo -e "${gl_lv}还原文件描述符...${gl_bai}"
+    ulimit -n 1024
+
+    echo -e "${gl_lv}还原虚拟内存...${gl_bai}"
+    sysctl -w vm.swappiness=60 2>/dev/null
+    sysctl -w vm.dirty_ratio=20 2>/dev/null
+    sysctl -w vm.dirty_background_ratio=10 2>/dev/null
+    sysctl -w vm.overcommit_memory=0 2>/dev/null
+    sysctl -w vm.min_free_kbytes=16384 2>/dev/null
+
+    echo -e "${gl_lv}还原网络设置...${gl_bai}"
+    sysctl -w net.core.rmem_max=212992 2>/dev/null
+    sysctl -w net.core.wmem_max=212992 2>/dev/null
+    sysctl -w net.core.netdev_max_backlog=1000 2>/dev/null
+    sysctl -w net.core.somaxconn=128 2>/dev/null
+    sysctl -w net.ipv4.tcp_rmem='4096 87380 6291456' 2>/dev/null
+    sysctl -w net.ipv4.tcp_wmem='4096 16384 4194304' 2>/dev/null
+    sysctl -w net.ipv4.tcp_congestion_control=cubic 2>/dev/null
+    sysctl -w net.ipv4.tcp_max_syn_backlog=2048 2>/dev/null
+    sysctl -w net.ipv4.tcp_tw_reuse=0 2>/dev/null
+    sysctl -w net.ipv4.ip_local_port_range='32768 60999' 2>/dev/null
+
+    echo -e "${gl_lv}还原缓存管理...${gl_bai}"
+    sysctl -w vm.vfs_cache_pressure=100 2>/dev/null
+
+    echo -e "${gl_lv}还原CPU设置...${gl_bai}"
+    sysctl -w kernel.sched_autogroup_enabled=1 2>/dev/null
+
+    echo -e "${gl_lv}还原其他优化...${gl_bai}"
+    # 还原透明大页面
+    echo always > /sys/kernel/mm/transparent_hugepage/enabled
+    # 还原 NUMA balancing
+    sysctl -w kernel.numa_balancing=1 2>/dev/null
+
+    echo -e "${gl_lv}✅ 默认设置还原完成！${gl_bai}"
+}
+
+# 内核参数优化管理菜单
+kernel_optimize_menu() {
+    while true; do
+        clear
+        echo -e "${gl_kjlan}=== Linux内核参数优化管理 ===${gl_bai}"
+        echo "提供多种系统参数调优模式，用户可以根据自身使用场景进行选择切换。"
+        echo -e "${gl_huang}提示: ${gl_bai}生产环境请谨慎使用！"
+        echo "------------------------------------------------"
+        echo "1. 高性能优化模式：     最大化系统性能，优化文件描述符、虚拟内存、网络设置、缓存管理和CPU设置。"
+        echo "2. 均衡优化模式：       在性能与资源消耗之间取得平衡，适合日常使用。"
+        echo "3. 网站优化模式：       针对网站服务器进行优化，提高并发连接处理能力、响应速度和整体性能。"
+        echo "4. 直播优化模式：       针对直播推流的特殊需求进行优化，减少延迟，提高传输性能。"
+        echo "5. 游戏服优化模式：     针对游戏服务器进行优化，提高并发处理能力和响应速度。"
+        echo "6. 还原默认设置：       将系统设置还原为默认配置。"
+        echo "------------------------------------------------"
+        echo "0. 返回主菜单"
+        echo "------------------------------------------------"
+        read -e -p "请输入你的选择: " sub_choice
+        
+        case $sub_choice in
+            1)
+                clear
+                optimize_high_performance
+                break_end
+                ;;
+            2)
+                clear
+                optimize_balanced
+                break_end
+                ;;
+            3)
+                clear
+                optimize_web_server
+                break_end
+                ;;
+            4)
+                clear
+                optimize_live_streaming
+                break_end
+                ;;
+            5)
+                clear
+                optimize_game_server
+                break_end
+                ;;
+            6)
+                clear
+                restore_defaults
+                break_end
+                ;;
+            0)
+                return
+                ;;
+            *)
+                echo "无效选择"
+                sleep 2
+                ;;
+        esac
+    done
 }
 
 #=============================================================================
@@ -845,10 +1299,12 @@ show_main_menu() {
     echo ""
     echo -e "${gl_kjlan}[系统工具]${gl_bai}"
     echo "5. 虚拟内存管理"
+    echo "6. 内核参数优化管理"
     echo ""
     echo -e "${gl_kjlan}[系统信息]${gl_bai}"
-    echo "6. 查看详细状态"
-    echo "7. 性能测试建议"
+    echo "7. 系统信息查询"
+    echo "8. 查看详细状态"
+    echo "9. 性能测试建议"
     echo ""
     echo "0. 退出脚本"
     echo "------------------------------------------------"
@@ -886,9 +1342,15 @@ show_main_menu() {
             manage_swap
             ;;
         6)
-            show_detailed_status
+            kernel_optimize_menu
             ;;
         7)
+            show_system_info
+            ;;
+        8)
+            show_detailed_status
+            ;;
+        9)
             show_performance_test
             ;;
         0)
