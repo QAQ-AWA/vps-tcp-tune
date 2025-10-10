@@ -1117,6 +1117,255 @@ show_detailed_status() {
     break_end
 }
 
+#=============================================================================
+# 内核参数优化 - 高性能模式
+#=============================================================================
+
+optimize_high_performance() {
+    echo -e "${gl_lv}切换到${tiaoyou_moshi}...${gl_bai}"
+
+    echo -e "${gl_lv}优化文件描述符...${gl_bai}"
+    ulimit -n 65535
+
+    echo -e "${gl_lv}优化虚拟内存...${gl_bai}"
+    sysctl -w vm.swappiness=10 2>/dev/null
+    sysctl -w vm.dirty_ratio=15 2>/dev/null
+    sysctl -w vm.dirty_background_ratio=5 2>/dev/null
+    sysctl -w vm.overcommit_memory=1 2>/dev/null
+    sysctl -w vm.min_free_kbytes=65536 2>/dev/null
+
+    echo -e "${gl_lv}优化网络设置...${gl_bai}"
+    sysctl -w net.core.rmem_max=16777216 2>/dev/null
+    sysctl -w net.core.wmem_max=16777216 2>/dev/null
+    sysctl -w net.core.netdev_max_backlog=250000 2>/dev/null
+    sysctl -w net.core.somaxconn=4096 2>/dev/null
+    sysctl -w net.ipv4.tcp_rmem='4096 87380 16777216' 2>/dev/null
+    sysctl -w net.ipv4.tcp_wmem='4096 65536 16777216' 2>/dev/null
+    sysctl -w net.ipv4.tcp_congestion_control=bbr 2>/dev/null
+    sysctl -w net.ipv4.tcp_max_syn_backlog=8192 2>/dev/null
+    sysctl -w net.ipv4.tcp_tw_reuse=1 2>/dev/null
+    sysctl -w net.ipv4.ip_local_port_range='1024 65535' 2>/dev/null
+
+    echo -e "${gl_lv}优化缓存管理...${gl_bai}"
+    sysctl -w vm.vfs_cache_pressure=50 2>/dev/null
+
+    echo -e "${gl_lv}优化CPU设置...${gl_bai}"
+    sysctl -w kernel.sched_autogroup_enabled=0 2>/dev/null
+
+    echo -e "${gl_lv}其他优化...${gl_bai}"
+    # 禁用透明大页面，减少延迟
+    echo never > /sys/kernel/mm/transparent_hugepage/enabled
+    # 禁用 NUMA balancing
+    sysctl -w kernel.numa_balancing=0 2>/dev/null
+
+    echo ""
+    echo -e "${gl_lv}${tiaoyou_moshi}设置完成！${gl_bai}"
+}
+
+#=============================================================================
+# 内核参数优化 - 均衡模式
+#=============================================================================
+
+optimize_balanced() {
+    echo -e "${gl_lv}切换到均衡模式...${gl_bai}"
+
+    echo -e "${gl_lv}优化文件描述符...${gl_bai}"
+    ulimit -n 32768
+
+    echo -e "${gl_lv}优化虚拟内存...${gl_bai}"
+    sysctl -w vm.swappiness=30 2>/dev/null
+    sysctl -w vm.dirty_ratio=20 2>/dev/null
+    sysctl -w vm.dirty_background_ratio=10 2>/dev/null
+    sysctl -w vm.overcommit_memory=0 2>/dev/null
+    sysctl -w vm.min_free_kbytes=32768 2>/dev/null
+
+    echo -e "${gl_lv}优化网络设置...${gl_bai}"
+    sysctl -w net.core.rmem_max=8388608 2>/dev/null
+    sysctl -w net.core.wmem_max=8388608 2>/dev/null
+    sysctl -w net.core.netdev_max_backlog=125000 2>/dev/null
+    sysctl -w net.core.somaxconn=2048 2>/dev/null
+    sysctl -w net.ipv4.tcp_rmem='4096 87380 8388608' 2>/dev/null
+    sysctl -w net.ipv4.tcp_wmem='4096 32768 8388608' 2>/dev/null
+    sysctl -w net.ipv4.tcp_congestion_control=bbr 2>/dev/null
+    sysctl -w net.ipv4.tcp_max_syn_backlog=4096 2>/dev/null
+    sysctl -w net.ipv4.tcp_tw_reuse=1 2>/dev/null
+    sysctl -w net.ipv4.ip_local_port_range='1024 49151' 2>/dev/null
+
+    echo -e "${gl_lv}优化缓存管理...${gl_bai}"
+    sysctl -w vm.vfs_cache_pressure=75 2>/dev/null
+
+    echo -e "${gl_lv}优化CPU设置...${gl_bai}"
+    sysctl -w kernel.sched_autogroup_enabled=1 2>/dev/null
+
+    echo -e "${gl_lv}其他优化...${gl_bai}"
+    # 还原透明大页面
+    echo always > /sys/kernel/mm/transparent_hugepage/enabled
+    # 还原 NUMA balancing
+    sysctl -w kernel.numa_balancing=1 2>/dev/null
+
+    echo ""
+    echo -e "${gl_lv}均衡模式设置完成！${gl_bai}"
+}
+
+#=============================================================================
+# 内核参数优化 - 网站优化模式
+#=============================================================================
+
+optimize_web_server() {
+    echo -e "${gl_lv}切换到网站搭建优化模式...${gl_bai}"
+
+    echo -e "${gl_lv}优化文件描述符...${gl_bai}"
+    ulimit -n 65535
+
+    echo -e "${gl_lv}优化虚拟内存...${gl_bai}"
+    sysctl -w vm.swappiness=10 2>/dev/null
+    sysctl -w vm.dirty_ratio=20 2>/dev/null
+    sysctl -w vm.dirty_background_ratio=10 2>/dev/null
+    sysctl -w vm.overcommit_memory=1 2>/dev/null
+    sysctl -w vm.min_free_kbytes=65536 2>/dev/null
+
+    echo -e "${gl_lv}优化网络设置...${gl_bai}"
+    sysctl -w net.core.rmem_max=16777216 2>/dev/null
+    sysctl -w net.core.wmem_max=16777216 2>/dev/null
+    sysctl -w net.core.netdev_max_backlog=5000 2>/dev/null
+    sysctl -w net.core.somaxconn=4096 2>/dev/null
+    sysctl -w net.ipv4.tcp_rmem='4096 87380 16777216' 2>/dev/null
+    sysctl -w net.ipv4.tcp_wmem='4096 65536 16777216' 2>/dev/null
+    sysctl -w net.ipv4.tcp_congestion_control=bbr 2>/dev/null
+    sysctl -w net.ipv4.tcp_max_syn_backlog=8192 2>/dev/null
+    sysctl -w net.ipv4.tcp_tw_reuse=1 2>/dev/null
+    sysctl -w net.ipv4.ip_local_port_range='1024 65535' 2>/dev/null
+
+    echo -e "${gl_lv}优化缓存管理...${gl_bai}"
+    sysctl -w vm.vfs_cache_pressure=50 2>/dev/null
+
+    echo -e "${gl_lv}优化CPU设置...${gl_bai}"
+    sysctl -w kernel.sched_autogroup_enabled=0 2>/dev/null
+
+    echo -e "${gl_lv}其他优化...${gl_bai}"
+    # 禁用透明大页面，减少延迟
+    echo never > /sys/kernel/mm/transparent_hugepage/enabled
+    # 禁用 NUMA balancing
+    sysctl -w kernel.numa_balancing=0 2>/dev/null
+
+    echo ""
+    echo -e "${gl_lv}网站优化模式设置完成！${gl_bai}"
+}
+
+#=============================================================================
+# 内核参数优化 - 还原默认设置
+#=============================================================================
+
+restore_defaults() {
+    echo -e "${gl_lv}还原到默认设置...${gl_bai}"
+
+    echo -e "${gl_lv}还原文件描述符...${gl_bai}"
+    ulimit -n 1024
+
+    echo -e "${gl_lv}还原虚拟内存...${gl_bai}"
+    sysctl -w vm.swappiness=60 2>/dev/null
+    sysctl -w vm.dirty_ratio=20 2>/dev/null
+    sysctl -w vm.dirty_background_ratio=10 2>/dev/null
+    sysctl -w vm.overcommit_memory=0 2>/dev/null
+    sysctl -w vm.min_free_kbytes=16384 2>/dev/null
+
+    echo -e "${gl_lv}还原网络设置...${gl_bai}"
+    sysctl -w net.core.rmem_max=212992 2>/dev/null
+    sysctl -w net.core.wmem_max=212992 2>/dev/null
+    sysctl -w net.core.netdev_max_backlog=1000 2>/dev/null
+    sysctl -w net.core.somaxconn=128 2>/dev/null
+    sysctl -w net.ipv4.tcp_rmem='4096 87380 6291456' 2>/dev/null
+    sysctl -w net.ipv4.tcp_wmem='4096 16384 4194304' 2>/dev/null
+    sysctl -w net.ipv4.tcp_congestion_control=cubic 2>/dev/null
+    sysctl -w net.ipv4.tcp_max_syn_backlog=2048 2>/dev/null
+    sysctl -w net.ipv4.tcp_tw_reuse=0 2>/dev/null
+    sysctl -w net.ipv4.ip_local_port_range='32768 60999' 2>/dev/null
+
+    echo -e "${gl_lv}还原缓存管理...${gl_bai}"
+    sysctl -w vm.vfs_cache_pressure=100 2>/dev/null
+
+    echo -e "${gl_lv}还原CPU设置...${gl_bai}"
+    sysctl -w kernel.sched_autogroup_enabled=1 2>/dev/null
+
+    echo -e "${gl_lv}还原其他优化...${gl_bai}"
+    # 还原透明大页面
+    echo always > /sys/kernel/mm/transparent_hugepage/enabled
+    # 还原 NUMA balancing
+    sysctl -w kernel.numa_balancing=1 2>/dev/null
+
+    echo ""
+    echo -e "${gl_lv}默认设置已还原！${gl_bai}"
+}
+
+#=============================================================================
+# 内核参数优化 - 主菜单
+#=============================================================================
+
+Kernel_optimize() {
+    while true; do
+        clear
+        echo "Linux系统内核参数优化"
+        echo "视频介绍: https://www.bilibili.com/video/BV1Kb421J7yg?t=0.1"
+        echo "------------------------------------------------"
+        echo "提供多种系统参数调优模式，用户可以根据自身使用场景进行选择切换。"
+        echo -e "${gl_huang}提示: ${gl_bai}生产环境请谨慎使用！"
+        echo "--------------------"
+        echo "1. 高性能优化模式：     最大化系统性能，优化文件描述符、虚拟内存、网络设置、缓存管理和CPU设置。"
+        echo "2. 均衡优化模式：       在性能与资源消耗之间取得平衡，适合日常使用。"
+        echo "3. 网站优化模式：       针对网站服务器进行优化，提高并发连接处理能力、响应速度和整体性能。"
+        echo "4. 直播优化模式：       针对直播推流的特殊需求进行优化，减少延迟，提高传输性能。"
+        echo "5. 游戏服优化模式：     针对游戏服务器进行优化，提高并发处理能力和响应速度。"
+        echo "6. 还原默认设置：       将系统设置还原为默认配置。"
+        echo "--------------------"
+        echo "0. 返回主菜单"
+        echo "--------------------"
+        read -e -p "请输入你的选择: " sub_choice
+        case $sub_choice in
+            1)
+                cd ~
+                clear
+                local tiaoyou_moshi="高性能优化模式"
+                optimize_high_performance
+                ;;
+            2)
+                cd ~
+                clear
+                optimize_balanced
+                ;;
+            3)
+                cd ~
+                clear
+                optimize_web_server
+                ;;
+            4)
+                cd ~
+                clear
+                local tiaoyou_moshi="直播优化模式"
+                optimize_high_performance
+                ;;
+            5)
+                cd ~
+                clear
+                local tiaoyou_moshi="游戏服优化模式"
+                optimize_high_performance
+                ;;
+            6)
+                cd ~
+                clear
+                restore_defaults
+                ;;
+            0)
+                break
+                ;;
+            *)
+                echo "无效的输入!"
+                sleep 1
+                ;;
+        esac
+        break_end
+    done
+}
+
 run_speedtest() {
     clear
     echo -e "${gl_kjlan}=== 服务器带宽测试 ===${gl_bai}"
@@ -1409,6 +1658,9 @@ show_main_menu() {
     echo "23. 科技lion脚本"
     echo "24. F佬一键sing box脚本"
     echo ""
+    echo -e "${gl_kjlan}[系统优化]${gl_bai}"
+    echo "25. Linux系统内核参数优化"
+    echo ""
     echo "0. 退出脚本"
     echo "------------------------------------------------"
     read -e -p "请输入选择: " choice
@@ -1502,6 +1754,9 @@ show_main_menu() {
             ;;
         24)
             run_fscarmen_singbox
+            ;;
+        25)
+            Kernel_optimize
             ;;
         0)
             echo "退出脚本"
