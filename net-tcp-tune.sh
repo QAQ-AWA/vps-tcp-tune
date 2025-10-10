@@ -2586,19 +2586,11 @@ remove_bbr_lotserver() {
 
 #启用BBR+cake
 startbbrcake() {
-  clear
-  echo -e "${gl_kjlan}=== 单独cake脚本 - BBR+CAKE加速 ===${gl_bai}"
-  echo ""
-  
   remove_bbr_lotserver
   echo "net.core.default_qdisc=cake" >>/etc/sysctl.d/99-sysctl.conf
   echo "net.ipv4.tcp_congestion_control=bbr" >>/etc/sysctl.d/99-sysctl.conf
   sysctl --system
-  
-  echo ""
-  echo -e "${gl_lv}BBR+CAKE 修改成功，重启生效！${gl_bai}"
-  echo ""
-  
+  echo -e "${gl_lv}[信息]${gl_bai}BBR+cake修改成功，重启生效！"
   break_end
 }
 
