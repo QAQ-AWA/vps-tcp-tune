@@ -2065,6 +2065,7 @@ show_main_menu() {
         echo ""
         echo -e "${gl_kjlan}[系统优化]${gl_bai}"
         echo "26. Linux系统内核参数优化"
+        echo "27. 单独cake脚本"
     else
         echo "1. 安装 XanMod 内核 + BBR v3"
         echo ""
@@ -2105,6 +2106,7 @@ show_main_menu() {
         echo ""
         echo -e "${gl_kjlan}[系统优化]${gl_bai}"
         echo "25. Linux系统内核参数优化"
+        echo "26. 单独cake脚本"
     fi
     
     echo ""
@@ -2302,6 +2304,13 @@ show_main_menu() {
         26)
             if [ $is_installed -eq 0 ]; then
                 Kernel_optimize
+            else
+                startbbrcake
+            fi
+            ;;
+        27)
+            if [ $is_installed -eq 0 ]; then
+                startbbrcake
             else
                 echo "无效选择"
                 sleep 2
@@ -2551,6 +2560,46 @@ run_fscarmen_singbox() {
     echo ""
     echo "------------------------------------------------"
     break_end
+}
+
+#=============================================================================
+# CAKE 加速功能（来自 cake.sh）
+#=============================================================================
+
+#卸载bbr+锐速
+remove_bbr_lotserver() {
+  sed -i '/net.ipv4.tcp_ecn/d' /etc/sysctl.d/99-sysctl.conf
+  sed -i '/net.core.default_qdisc/d' /etc/sysctl.d/99-sysctl.conf
+  sed -i '/net.ipv4.tcp_congestion_control/d' /etc/sysctl.d/99-sysctl.conf
+  sed -i '/net.ipv4.tcp_ecn/d' /etc/sysctl.conf
+  sed -i '/net.core.default_qdisc/d' /etc/sysctl.conf
+  sed -i '/net.ipv4.tcp_congestion_control/d' /etc/sysctl.conf
+  sysctl --system
+
+  rm -rf bbrmod
+
+  if [[ -e /appex/bin/lotServer.sh ]]; then
+    echo | bash <(wget -qO- https://raw.githubusercontent.com/fei5seven/lotServer/master/lotServerInstall.sh) uninstall
+  fi
+  clear
+}
+
+#启用BBR+cake
+startbbrcake() {
+  clear
+  echo -e "${gl_kjlan}=== 单独cake脚本 - BBR+CAKE加速 ===${gl_bai}"
+  echo ""
+  
+  remove_bbr_lotserver
+  echo "net.core.default_qdisc=cake" >>/etc/sysctl.d/99-sysctl.conf
+  echo "net.ipv4.tcp_congestion_control=bbr" >>/etc/sysctl.d/99-sysctl.conf
+  sysctl --system
+  
+  echo ""
+  echo -e "${gl_lv}BBR+CAKE 修改成功，重启生效！${gl_bai}"
+  echo ""
+  
+  break_end
 }
 
 #=============================================================================
