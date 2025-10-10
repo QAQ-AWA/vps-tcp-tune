@@ -1816,48 +1816,86 @@ show_main_menu() {
     if [ $is_installed -eq 0 ]; then
         echo "1. 更新 XanMod 内核"
         echo "2. 卸载 XanMod 内核"
+        echo ""
+        echo -e "${gl_kjlan}[BBR TCP调优]${gl_bai}"
+        echo "3. 快速启用 BBR + FQ（≤1GB 内存）"
+        echo "4. 快速启用 BBR + FQ（2GB+ 内存）"
+        echo ""
+        echo -e "${gl_kjlan}[系统设置]${gl_bai}"
+        echo "5. 虚拟内存管理"
+        echo "6. 设置IPv4优先"
+        echo "7. 设置IPv6优先"
+        echo ""
+        echo -e "${gl_kjlan}[Xray配置]${gl_bai}"
+        echo "8. 查看Xray配置"
+        echo "9. 设置Xray IPv6出站"
+        echo "10. 恢复Xray默认配置"
+        echo ""
+        echo -e "${gl_kjlan}[系统信息]${gl_bai}"
+        echo "11. 查看详细状态"
+        echo ""
+        echo -e "${gl_kjlan}[服务器检测合集]${gl_bai}"
+        echo "12. NS一键检测脚本"
+        echo "13. 服务器带宽测试"
+        echo "14. 三网回程路由测试"
+        echo "15. IP质量检测"
+        echo "16. IP质量检测-仅IPv4"
+        echo "17. 网络延迟质量检测"
+        echo "18. 国际互联速度测试"
+        echo "19. IP媒体/AI解锁检测"
+        echo ""
+        echo -e "${gl_kjlan}[脚本合集]${gl_bai}"
+        echo "20. PF_realm转发脚本"
+        echo "21. 御坂美琴一键双协议"
+        echo "22. NS论坛的cake调优"
+        echo "23. 酷雪云脚本"
+        echo "24. 科技lion脚本"
+        echo "25. F佬一键sing box脚本"
+        echo ""
+        echo -e "${gl_kjlan}[系统优化]${gl_bai}"
+        echo "26. Linux系统内核参数优化"
     else
         echo "1. 安装 XanMod 内核 + BBR v3"
+        echo ""
+        echo -e "${gl_kjlan}[BBR TCP调优]${gl_bai}"
+        echo "2. 快速启用 BBR + FQ（≤1GB 内存）"
+        echo "3. 快速启用 BBR + FQ（2GB+ 内存）"
+        echo ""
+        echo -e "${gl_kjlan}[系统设置]${gl_bai}"
+        echo "4. 虚拟内存管理"
+        echo "5. 设置IPv4优先"
+        echo "6. 设置IPv6优先"
+        echo ""
+        echo -e "${gl_kjlan}[Xray配置]${gl_bai}"
+        echo "7. 查看Xray配置"
+        echo "8. 设置Xray IPv6出站"
+        echo "9. 恢复Xray默认配置"
+        echo ""
+        echo -e "${gl_kjlan}[系统信息]${gl_bai}"
+        echo "10. 查看详细状态"
+        echo ""
+        echo -e "${gl_kjlan}[服务器检测合集]${gl_bai}"
+        echo "11. NS一键检测脚本"
+        echo "12. 服务器带宽测试"
+        echo "13. 三网回程路由测试"
+        echo "14. IP质量检测"
+        echo "15. IP质量检测-仅IPv4"
+        echo "16. 网络延迟质量检测"
+        echo "17. 国际互联速度测试"
+        echo "18. IP媒体/AI解锁检测"
+        echo ""
+        echo -e "${gl_kjlan}[脚本合集]${gl_bai}"
+        echo "19. PF_realm转发脚本"
+        echo "20. 御坂美琴一键双协议"
+        echo "21. NS论坛的cake调优"
+        echo "22. 酷雪云脚本"
+        echo "23. 科技lion脚本"
+        echo "24. F佬一键sing box脚本"
+        echo ""
+        echo -e "${gl_kjlan}[系统优化]${gl_bai}"
+        echo "25. Linux系统内核参数优化"
     fi
-
-    echo ""
-    echo -e "${gl_kjlan}[BBR TCP调优]${gl_bai}"
-    echo "2. 快速启用 BBR + FQ（≤1GB 内存）"
-    echo "3. 快速启用 BBR + FQ（2GB+ 内存）"
-    echo ""
-    echo -e "${gl_kjlan}[系统设置]${gl_bai}"
-    echo "4. 虚拟内存管理"
-    echo "5. 设置IPv4优先"
-    echo "6. 设置IPv6优先"
-    echo ""
-    echo -e "${gl_kjlan}[Xray配置]${gl_bai}"
-    echo "7. 查看Xray配置"
-    echo "8. 设置Xray IPv6出站"
-    echo "9. 恢复Xray默认配置"
-    echo ""
-    echo -e "${gl_kjlan}[系统信息]${gl_bai}"
-    echo "10. 查看详细状态"
-    echo ""
-    echo -e "${gl_kjlan}[服务器检测合集]${gl_bai}"
-    echo "11. NS一键检测脚本"
-    echo "12. 服务器带宽测试"
-    echo "13. 三网回程路由测试"
-    echo "14. IP质量检测"
-    echo "15. IP质量检测-仅IPv4"
-    echo "16. 网络延迟质量检测"
-    echo "17. 国际互联速度测试"
-    echo "18. IP媒体/AI解锁检测"
-    echo ""
-    echo -e "${gl_kjlan}[脚本合集]${gl_bai}"
-    echo "19. PF_realm转发脚本"
-    echo "20. 御坂美琴一键双协议"
-    echo "21. NS论坛的cake调优"
-    echo "22. 酷雪云脚本"
-    echo "23. 科技lion脚本"
-    echo "24. F佬一键sing box脚本"
-    echo ""
-    echo -e "${gl_kjlan}[系统优化]${gl_bai}"
-    echo "25. Linux系统内核参数优化"
+    
     echo ""
     echo "0. 退出脚本"
     echo "------------------------------------------------"
@@ -1887,74 +1925,176 @@ show_main_menu() {
             fi
             ;;
         3)
-            bbr_configure_2gb "fq" "通用场景优化（2GB+ 内存，32MB 缓冲区）"
-            break_end
+            if [ $is_installed -eq 0 ]; then
+                bbr_configure "fq" "通用场景优化（≤1GB 内存，16MB 缓冲区）"
+                break_end
+            else
+                bbr_configure_2gb "fq" "通用场景优化（2GB+ 内存，32MB 缓冲区）"
+                break_end
+            fi
             ;;
         4)
-            manage_swap
+            if [ $is_installed -eq 0 ]; then
+                bbr_configure_2gb "fq" "通用场景优化（2GB+ 内存，32MB 缓冲区）"
+                break_end
+            else
+                manage_swap
+            fi
             ;;
         5)
-            set_ipv4_priority
+            if [ $is_installed -eq 0 ]; then
+                manage_swap
+            else
+                set_ipv4_priority
+            fi
             ;;
         6)
-            set_ipv6_priority
+            if [ $is_installed -eq 0 ]; then
+                set_ipv4_priority
+            else
+                set_ipv6_priority
+            fi
             ;;
         7)
-            show_xray_config
+            if [ $is_installed -eq 0 ]; then
+                set_ipv6_priority
+            else
+                show_xray_config
+            fi
             ;;
         8)
-            set_xray_ipv6_outbound
+            if [ $is_installed -eq 0 ]; then
+                show_xray_config
+            else
+                set_xray_ipv6_outbound
+            fi
             ;;
         9)
-            restore_xray_default
+            if [ $is_installed -eq 0 ]; then
+                set_xray_ipv6_outbound
+            else
+                restore_xray_default
+            fi
             ;;
         10)
-            show_detailed_status
+            if [ $is_installed -eq 0 ]; then
+                restore_xray_default
+            else
+                show_detailed_status
+            fi
             ;;
         11)
-            run_ns_detect
+            if [ $is_installed -eq 0 ]; then
+                show_detailed_status
+            else
+                run_ns_detect
+            fi
             ;;
         12)
-            run_speedtest
+            if [ $is_installed -eq 0 ]; then
+                run_ns_detect
+            else
+                run_speedtest
+            fi
             ;;
         13)
-            run_backtrace
+            if [ $is_installed -eq 0 ]; then
+                run_speedtest
+            else
+                run_backtrace
+            fi
             ;;
         14)
-            run_ip_quality_check
+            if [ $is_installed -eq 0 ]; then
+                run_backtrace
+            else
+                run_ip_quality_check
+            fi
             ;;
         15)
-            run_ip_quality_check_ipv4
+            if [ $is_installed -eq 0 ]; then
+                run_ip_quality_check
+            else
+                run_ip_quality_check_ipv4
+            fi
             ;;
         16)
-            run_network_latency_check
+            if [ $is_installed -eq 0 ]; then
+                run_ip_quality_check_ipv4
+            else
+                run_network_latency_check
+            fi
             ;;
         17)
-            run_international_speed_test
+            if [ $is_installed -eq 0 ]; then
+                run_network_latency_check
+            else
+                run_international_speed_test
+            fi
             ;;
         18)
-            run_unlock_check
+            if [ $is_installed -eq 0 ]; then
+                run_international_speed_test
+            else
+                run_unlock_check
+            fi
             ;;
         19)
-            run_pf_realm
+            if [ $is_installed -eq 0 ]; then
+                run_unlock_check
+            else
+                run_pf_realm
+            fi
             ;;
         20)
-            run_misaka_xray
+            if [ $is_installed -eq 0 ]; then
+                run_pf_realm
+            else
+                run_misaka_xray
+            fi
             ;;
         21)
-            run_ns_cake
+            if [ $is_installed -eq 0 ]; then
+                run_misaka_xray
+            else
+                run_ns_cake
+            fi
             ;;
         22)
-            run_kxy_script
+            if [ $is_installed -eq 0 ]; then
+                run_ns_cake
+            else
+                run_kxy_script
+            fi
             ;;
         23)
-            run_kejilion_script
+            if [ $is_installed -eq 0 ]; then
+                run_kxy_script
+            else
+                run_kejilion_script
+            fi
             ;;
         24)
-            run_fscarmen_singbox
+            if [ $is_installed -eq 0 ]; then
+                run_kejilion_script
+            else
+                run_fscarmen_singbox
+            fi
             ;;
         25)
-            Kernel_optimize
+            if [ $is_installed -eq 0 ]; then
+                run_fscarmen_singbox
+            else
+                Kernel_optimize
+            fi
+            ;;
+        26)
+            if [ $is_installed -eq 0 ]; then
+                Kernel_optimize
+            else
+                echo "无效选择"
+                sleep 2
+            fi
             ;;
         0)
             echo "退出脚本"
