@@ -1156,6 +1156,97 @@ run_ns_detect() {
     break_end
 }
 
+run_ip_quality_check() {
+    clear
+    echo -e "${gl_kjlan}=== IP质量检测 ===${gl_bai}"
+    echo ""
+    echo "正在运行 IP 质量检测脚本（IPv4 + IPv6）..."
+    echo "------------------------------------------------"
+    echo ""
+
+    # 执行 IP 质量检测脚本
+    bash <(curl -Ls https://IP.Check.Place)
+
+    echo ""
+    echo "------------------------------------------------"
+    break_end
+}
+
+run_ip_quality_check_ipv4() {
+    clear
+    echo -e "${gl_kjlan}=== IP质量检测 - 仅IPv4 ===${gl_bai}"
+    echo ""
+    echo "正在运行 IP 质量检测脚本（仅 IPv4）..."
+    echo "------------------------------------------------"
+    echo ""
+
+    # 执行 IP 质量检测脚本 - 仅 IPv4
+    bash <(curl -Ls https://IP.Check.Place) -4
+
+    echo ""
+    echo "------------------------------------------------"
+    break_end
+}
+
+run_network_latency_check() {
+    clear
+    echo -e "${gl_kjlan}=== 网络延迟质量检测 ===${gl_bai}"
+    echo ""
+    echo "正在运行网络延迟质量检测脚本..."
+    echo "------------------------------------------------"
+    echo ""
+
+    # 执行网络延迟质量检测脚本
+    bash <(curl -sL https://Check.Place) -N
+
+    echo ""
+    echo "------------------------------------------------"
+    break_end
+}
+
+run_international_speed_test() {
+    clear
+    echo -e "${gl_kjlan}=== 国际互联速度测试 ===${gl_bai}"
+    echo ""
+    echo "正在下载并运行国际互联速度测试脚本..."
+    echo "------------------------------------------------"
+    echo ""
+
+    # 切换到临时目录
+    cd /tmp || {
+        echo -e "${gl_hong}错误: 无法切换到 /tmp 目录${gl_bai}"
+        break_end
+        return 1
+    }
+
+    # 下载脚本
+    echo "正在下载脚本..."
+    wget https://raw.githubusercontent.com/Cd1s/network-latency-tester/main/latency.sh
+
+    if [ $? -ne 0 ]; then
+        echo -e "${gl_hong}下载失败！${gl_bai}"
+        break_end
+        return 1
+    fi
+
+    # 添加执行权限
+    chmod +x latency.sh
+
+    # 运行测试
+    echo ""
+    echo "开始测试..."
+    echo "------------------------------------------------"
+    echo ""
+    ./latency.sh
+
+    # 清理临时文件
+    rm -f latency.sh
+
+    echo ""
+    echo "------------------------------------------------"
+    break_end
+}
+
 #=============================================================================
 # 主菜单
 #=============================================================================
@@ -1199,11 +1290,15 @@ show_main_menu() {
     echo "12. 服务器带宽测试"
     echo "13. 三网回程路由测试"
     echo "14. NS一键检测脚本"
-    echo "15. IP媒体/AI解锁检测"
-    echo "16. PF_realm转发脚本"
-    echo "17. 酷雪云脚本"
-    echo "18. 御坂美琴一键双协议"
-    echo "19. NS论坛的cake调优"
+    echo "15. IP质量检测"
+    echo "16. IP质量检测-仅IPv4"
+    echo "17. 网络延迟质量检测"
+    echo "18. 国际互联速度测试"
+    echo "19. IP媒体/AI解锁检测"
+    echo "20. PF_realm转发脚本"
+    echo "21. 酷雪云脚本"
+    echo "22. 御坂美琴一键双协议"
+    echo "23. NS论坛的cake调优"
     echo ""
     echo "0. 退出脚本"
     echo "------------------------------------------------"
@@ -1268,18 +1363,30 @@ show_main_menu() {
             run_ns_detect
             ;;
         15)
-            run_unlock_check
+            run_ip_quality_check
             ;;
         16)
-            run_pf_realm
+            run_ip_quality_check_ipv4
             ;;
         17)
-            run_kxy_script
+            run_network_latency_check
             ;;
         18)
-            run_misaka_xray
+            run_international_speed_test
             ;;
         19)
+            run_unlock_check
+            ;;
+        20)
+            run_pf_realm
+            ;;
+        21)
+            run_kxy_script
+            ;;
+        22)
+            run_misaka_xray
+            ;;
+        23)
             run_ns_cake
             ;;
         0)
