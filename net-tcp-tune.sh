@@ -1299,6 +1299,8 @@ show_main_menu() {
     echo "21. 酷雪云脚本"
     echo "22. 御坂美琴一键双协议"
     echo "23. NS论坛的cake调优"
+    echo "24. 科技lion脚本"
+    echo "25. F佬一键sing box脚本"
     echo ""
     echo "0. 退出脚本"
     echo "------------------------------------------------"
@@ -1388,6 +1390,12 @@ show_main_menu() {
             ;;
         23)
             run_ns_cake
+            ;;
+        24)
+            run_kejilion_script
+            ;;
+        25)
+            run_fscarmen_singbox
             ;;
         0)
             echo "退出脚本"
@@ -1597,6 +1605,38 @@ run_ns_cake() {
 
     # 执行 NS论坛 cake 调优脚本
     wget -O tcpx.sh "https://github.com/ylx2016/Linux-NetSpeed/raw/master/tcpx.sh" && chmod +x tcpx.sh && ./tcpx.sh
+
+    echo ""
+    echo "------------------------------------------------"
+    break_end
+}
+
+run_kejilion_script() {
+    clear
+    echo -e "${gl_kjlan}=== 科技lion脚本 ===${gl_bai}"
+    echo ""
+    echo "正在运行科技lion脚本..."
+    echo "------------------------------------------------"
+    echo ""
+
+    # 执行科技lion脚本
+    bash <(curl -sL kejilion.sh)
+
+    echo ""
+    echo "------------------------------------------------"
+    break_end
+}
+
+run_fscarmen_singbox() {
+    clear
+    echo -e "${gl_kjlan}=== F佬一键sing box脚本 ===${gl_bai}"
+    echo ""
+    echo "正在运行 F佬一键sing box脚本..."
+    echo "------------------------------------------------"
+    echo ""
+
+    # 执行 F佬一键sing box脚本
+    bash <(wget -qO- https://raw.githubusercontent.com/fscarmen/sing-box/main/sing-box.sh)
 
     echo ""
     echo "------------------------------------------------"
