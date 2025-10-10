@@ -1,57 +1,114 @@
 # BBR v3 终极优化脚本 - Ultimate Edition
 
-🚀 **XanMod 内核 + BBR v3 + 专业队列算法调优**  
-一键安装 XanMod 内核，启用 BBR v3 拥塞控制，并根据使用场景选择最佳队列算法（FQ/FQ_PIE/CAKE）。
+🚀 **XanMod 内核 + BBR v3 + 全方位 VPS 管理工具集**
+一键安装 XanMod 内核，启用 BBR v3 拥塞控制，集成 25+ 实用工具，全面优化你的 VPS 服务器。
 
-> **版本**: 2.0 Ultimate Edition  
+> **版本**: 2.0 Ultimate Edition
 > **视频教程**: [B站教程](https://www.bilibili.com/video/BV14K421x7BS)
+
+---
+
+## 🚀 一键安装（推荐）
+
+### 远程运行最新版（无需下载）
+
+```bash
+bash <(wget -qO- https://raw.githubusercontent.com/Eric86777/vps-tcp-tune/main/net-tcp-tune.sh)
+```
+
+**优点**:
+- ✅ 最简洁，只需一行命令
+- ✅ 每次都运行最新版
+- ✅ 不产生本地文件
 
 ---
 
 ## 🌟 核心特性
 
-### ✨ 四大核心功能
-1. **XanMod 内核安装**：官方源安装，支持 x86_64 & ARM64 架构
-2. **BBR v3 启用**：最新一代拥塞控制算法
-3. **队列算法优化**：FQ / FQ_PIE / CAKE 三种专业方案
-4. **虚拟内存管理**：智能计算最佳 SWAP 大小，防止 OOM 杀进程
+### ✨ 七大功能模块
 
-### 🎯 适用场景
-- **通用 Web 服务器**：BBR + FQ（高吞吐量）
-- **游戏/实时应用**：BBR + FQ_PIE（超低延迟）
-- **VPN/多用户场景**：BBR + CAKE（智能流量整形）
+1. **🔧 内核管理**
+   - XanMod 内核安装/更新/卸载
+   - 支持 x86_64 & ARM64 架构
+   - 自动检测 CPU 最优版本（v2/v3/v4）
+
+2. **⚡ BBR v3 配置**
+   - 快速启用 BBR + FQ（≤1GB 内存）
+   - 快速启用 BBR + FQ（2GB+ 内存）
+   - 自动优化 TCP 缓冲区
+
+3. **🛠️ 系统工具**
+   - 虚拟内存管理（智能计算推荐值）
+   - IPv4/IPv6 优先级设置
+   - 出口 IP 地址查看
+
+4. **🔐 Xray 配置**
+   - 查看 Xray 配置
+   - 设置 Xray IPv6 出站
+   - 恢复 Xray 默认配置
+
+5. **📊 网络测试**
+   - 服务器带宽测试（Speedtest）
+   - 三网回程路由测试
+   - IP 质量检测（IPv4/IPv6）
+   - 网络延迟质量检测
+   - 国际互联速度测试
+
+6. **🎯 流媒体/解锁检测**
+   - IP 媒体/AI 解锁检测
+   - NS 一键检测脚本
+
+7. **🔌 第三方工具集成**
+   - PF_realm 转发脚本
+   - 酷雪云脚本
+   - 御坂美琴一键双协议
+   - NS 论坛 cake 调优
+   - 科技lion 脚本
+   - F佬一键 sing-box 脚本
 
 ---
 
-## 🚀 快速开始
+## 📋 完整功能列表
 
-### 一键运行（交互式菜单）
+### [内核管理]
+1. 安装 XanMod 内核 + BBR v3
+2. 更新 XanMod 内核（已安装时显示）
+3. 卸载 XanMod 内核（已安装时显示）
 
-```bash
-# 删除旧版本（如果存在）
-rm -f net-tcp-tune.sh
+### [BBR 配置]
+3. 快速启用 BBR + FQ（≤1GB 内存）
+4. 快速启用 BBR + FQ（2GB+ 内存）
 
-# 下载最新版本
-wget https://raw.githubusercontent.com/Eric86777/vps-tcp-tune/main/net-tcp-tune.sh
+### [系统工具]
+5. 虚拟内存管理
+   - 分配 1024M (1GB)
+   - 分配 2048M (2GB)
+   - 分配 4096M (4GB)
+   - 智能计算推荐值
+6. 设置 IPv4 优先
+7. 设置 IPv6 优先
 
-# 赋予执行权限
-chmod +x net-tcp-tune.sh
+### [Xray配置]
+8. 查看 Xray 配置
+9. 设置 Xray IPv6 出站
+10. 恢复 Xray 默认配置
 
-# 运行脚本
-sudo ./net-tcp-tune.sh
-```
-
-> ⚠️ **重要提示**：每次使用前建议先删除旧脚本，确保获取最新版本！
-
-### 命令行模式（非交互）
-
-```bash
-# 仅安装 XanMod 内核
-sudo ./net-tcp-tune.sh --install
-
-# 重启后配置 BBR
-sudo ./net-tcp-tune.sh --configure
-```
+### [系统信息]
+11. 查看详细状态
+12. 服务器带宽测试
+13. 三网回程路由测试
+14. NS一键检测脚本
+15. IP质量检测
+16. IP质量检测-仅IPv4
+17. 网络延迟质量检测
+18. 国际互联速度测试
+19. IP媒体/AI解锁检测
+20. PF_realm转发脚本
+21. 酷雪云脚本
+22. 御坂美琴一键双协议
+23. NS论坛的cake调优
+24. 科技lion脚本
+25. F佬一键sing box脚本
 
 ---
 
@@ -66,60 +123,40 @@ sudo ./net-tcp-tune.sh --configure
 
 ---
 
-## 🎛️ 队列算法对比
-
-| 算法 | 延迟 | 吞吐量 | 最佳场景 |
-|------|------|--------|---------|
-| **FQ** | 中等 | ★★★★★ | 通用高性能服务器、Web 服务、API、文件传输 |
-| **FQ_PIE** | 极低 | ★★★★☆ | 游戏服务器、实时视频、VoIP |
-| **CAKE** | 低 | ★★★★☆ | VPN 服务器、多用户共享、智能流量整形 |
-
-### 🔬 实测性能数据（200ms RTT 跨国链路）
-
-```
-默认 + Cubic:      50 Mbps，延迟 200ms
-BBR (无队列):     120 Mbps，延迟 180ms
-BBR + FQ:         150 Mbps，延迟 150ms
-BBR + FQ_PIE:     140 Mbps，延迟  90ms ⭐ (延迟降低 70%)
-BBR + CAKE:       145 Mbps，延迟 120ms
-```
-
----
-
 ## 🛠️ 使用流程
 
-### 第一步：安装 XanMod 内核
+### 第一步：运行脚本
 
 ```bash
-sudo ./net-tcp-tune.sh
-# 选择菜单选项 1
+bash <(wget -qO- https://raw.githubusercontent.com/Eric86777/vps-tcp-tune/main/net-tcp-tune.sh)
 ```
 
-脚本会自动：
-- ✅ 检测 CPU 架构（x86-64-v2/v3/v4 自动适配）
-- ✅ 添加 XanMod 官方仓库
-- ✅ 安装对应内核版本
-- ✅ 检查磁盘空间（需要 3GB+）
-- ✅ 创建 SWAP（如无虚拟内存）
+### 第二步：安装 XanMod 内核
+
+- 选择菜单选项 **1**
+- 脚本会自动：
+  - ✅ 检测 CPU 架构（x86-64-v2/v3/v4 自动适配）
+  - ✅ 添加 XanMod 官方仓库
+  - ✅ 安装对应内核版本
+  - ✅ 检查磁盘空间（需要 3GB+）
+  - ✅ 创建 SWAP（如无虚拟内存）
 
 ⚠️ **安装完成后必须重启系统！**
 
-### 第二步：配置 BBR + 队列算法
+### 第三步：配置 BBR
 
 重启后再次运行脚本：
 
 ```bash
-sudo ./net-tcp-tune.sh
-# 选择菜单选项 3-6
+bash <(wget -qO- https://raw.githubusercontent.com/Eric86777/vps-tcp-tune/main/net-tcp-tune.sh)
 ```
 
 **推荐配置：**
-- 选项 3：交互式选择（查看详细对比）
-- 选项 4：快速启用 BBR + FQ（通用场景）
-  - ≤1GB 内存：16MB 缓冲区，64KB/85KB 默认值
-  - 2GB+ 内存：32MB 缓冲区，256KB 默认值，额外高级优化
-- 选项 5：快速启用 BBR + FQ_PIE（游戏/低延迟）
-- 选项 6：快速启用 BBR + CAKE（VPN/多用户）
+- 选项 **3**：BBR + FQ（≤1GB 内存）
+  - 16MB 缓冲区，85KB 默认值
+- 选项 **4**：BBR + FQ（2GB+ 内存）
+  - 32MB 缓冲区，256KB 默认值
+  - 额外高级优化（禁用慢启动、MTU探测等）
 
 ---
 
@@ -142,9 +179,112 @@ modinfo tcp_bbr | grep version
 
 ```
 net.ipv4.tcp_congestion_control = bbr
-net.core.default_qdisc = fq (或 fq_pie/cake)
+net.core.default_qdisc = fq
 version:        3
 ```
+
+---
+
+## 🔧 虚拟内存智能计算
+
+脚本提供智能 SWAP 计算功能（菜单选项 **5** → **4**），根据物理内存自动推荐：
+
+| 物理内存 | 推荐 SWAP | 计算公式 |
+|---------|-----------|---------|
+| < 512MB | 1GB（固定） | 固定值 |
+| 512MB - 1GB | 内存 × 2 | 例：512MB → 1GB SWAP |
+| 1GB - 2GB | 内存 × 1.5 | 例：1GB → 1.5GB SWAP |
+| 2GB - 4GB | 内存 × 1 | 例：2GB → 2GB SWAP |
+| 4GB - 8GB | 4GB（固定） | 固定值 |
+| ≥ 8GB | 4GB（固定） | 固定值 |
+
+---
+
+## 🌐 IPv4/IPv6 优先级设置
+
+### 设置 IPv4 优先（选项 6）
+- 修改 `/etc/gai.conf` 配置
+- 启用 IPv4 优先解析
+- 自动显示当前出口 IP
+
+### 设置 IPv6 优先（选项 7）
+- 修改 `/etc/gai.conf` 配置
+- 禁用 IPv4 优先（即 IPv6 优先）
+- 自动显示当前出口 IP
+
+---
+
+## 🔐 Xray 配置管理
+
+### 查看配置（选项 8）
+- 显示 `/usr/local/etc/xray/config.json` 完整内容
+
+### IPv6 出站（选项 9）
+- 自动备份当前配置
+- 使用 `jq` 修改为 IPv6 出站
+- 测试配置有效性
+- 失败自动回滚
+
+### 恢复默认（选项 10）
+- 恢复双栈模式（IPv4/IPv6）
+- 自动备份和测试
+
+---
+
+## 📊 网络测试工具
+
+### 服务器带宽测试（选项 12）
+- 自动检测系统架构（x86_64/ARM64）
+- 下载并安装 Speedtest CLI
+- 运行完整带宽测试
+
+### 三网回程路由测试（选项 13）
+- 测试电信/联通/移动回程路由
+- 显示完整路由追踪
+
+### IP 质量检测（选项 15/16）
+- 完整检测：IPv4 + IPv6
+- 仅 IPv4 检测
+
+### 网络延迟质量检测（选项 17）
+- 测试到全球多个节点的延迟
+- 评估网络质量
+
+### 国际互联速度测试（选项 18）
+- 测试国际互联带宽
+- 下载 latency.sh 脚本执行
+
+---
+
+## 🎯 流媒体解锁检测
+
+### IP 媒体/AI 解锁检测（选项 19）
+- 检测 Netflix、Disney+、HBO 等流媒体
+- 检测 OpenAI、Claude 等 AI 服务
+- 显示解锁状态
+
+---
+
+## 🔌 第三方工具集成
+
+### PF_realm 转发脚本（选项 20）
+- 高性能端口转发工具
+- 支持 TCP/UDP
+
+### 酷雪云脚本（选项 21）
+- 酷雪云官方工具集
+
+### 御坂美琴一键双协议（选项 22）
+- Xray 双协议一键安装
+
+### NS 论坛 cake 调优（选项 23）
+- CAKE 队列算法优化脚本
+
+### 科技lion 脚本（选项 24）
+- 综合 VPS 管理工具
+
+### F佬一键 sing-box 脚本（选项 25）
+- sing-box 一键安装配置
 
 ---
 
@@ -156,8 +296,12 @@ version:        3
 /etc/sysctl.d/99-bbr-ultimate.conf
 ```
 
-**配置内容示例（≤1GB 内存版本）：**
+### ≤1GB 内存版本配置
+
 ```bash
+# BBR v3 Ultimate Configuration
+# Generated on 2025-01-10
+
 # 队列调度算法
 net.core.default_qdisc=fq
 
@@ -171,59 +315,29 @@ net.ipv4.tcp_rmem=4096 87380 16777216
 net.ipv4.tcp_wmem=4096 65536 16777216
 ```
 
-**配置内容示例（2GB+ 内存版本）：**
+### 2GB+ 内存版本配置
+
 ```bash
+# BBR v3 Ultimate Configuration (2GB+ Memory)
+# Generated on 2025-01-10
+
 # 队列调度算法
 net.core.default_qdisc=fq
 
 # 拥塞控制算法
 net.ipv4.tcp_congestion_control=bbr
 
-# TCP 缓冲区优化（32MB 上限，256KB 默认值，适合高带宽场景）
+# TCP 缓冲区优化（32MB 上限，256KB 默认值）
 net.core.rmem_max=33554432
 net.core.wmem_max=33554432
 net.ipv4.tcp_rmem=4096 262144 33554432
 net.ipv4.tcp_wmem=4096 262144 33554432
 
 # 高级优化（适合高带宽场景）
-net.ipv4.tcp_slow_start_after_idle=0    # 禁用慢启动
-net.ipv4.tcp_mtu_probing=1              # 启用 MTU 探测
-net.core.netdev_max_backlog=16384       # 网络设备队列长度
-net.ipv4.tcp_max_syn_backlog=8192       # SYN 队列长度
-```
-
----
-
-## 📈 性能测试建议
-
-### 1. 带宽测试
-
-```bash
-# 使用 iperf3
-iperf3 -c speedtest.example.com
-
-# 或使用 wget
-wget -O /dev/null http://cachefly.cachefly.net/10gb.test
-```
-
-### 2. 延迟测试
-
-```bash
-# 本地延迟
-ping -c 100 8.8.8.8
-
-# 跨国延迟
-ping -c 100 目标服务器IP
-```
-
-### 3. 实时监控
-
-```bash
-# 查看当前连接的拥塞控制算法
-ss -ti | grep bbr
-
-# 查看队列状态
-tc -s qdisc show
+net.ipv4.tcp_slow_start_after_idle=0
+net.ipv4.tcp_mtu_probing=1
+net.core.netdev_max_backlog=16384
+net.ipv4.tcp_max_syn_backlog=8192
 ```
 
 ---
@@ -233,7 +347,9 @@ tc -s qdisc show
 ### 卸载 XanMod 内核
 
 ```bash
-sudo ./net-tcp-tune.sh
+# 运行脚本
+bash <(wget -qO- https://raw.githubusercontent.com/Eric86777/vps-tcp-tune/main/net-tcp-tune.sh)
+
 # 选择菜单选项 2（仅在已安装 XanMod 后显示）
 ```
 
@@ -242,22 +358,6 @@ sudo ./net-tcp-tune.sh
 - 删除配置文件 `/etc/sysctl.d/99-bbr-ultimate.conf`
 - 更新 GRUB 引导
 - 询问是否重启
-
-### 手动清理
-
-```bash
-# 卸载内核
-sudo apt purge -y 'linux-*xanmod1*'
-
-# 删除配置
-sudo rm -f /etc/sysctl.d/99-bbr-ultimate.conf
-
-# 更新引导
-sudo update-grub
-
-# 重启
-sudo reboot
-```
 
 ---
 
@@ -268,18 +368,36 @@ sudo reboot
 3. **备份建议**：升级内核前建议备份重要数据
 4. **重启需求**：内核升级后必须重启才能生效
 5. **兼容性**：仅支持 Debian/Ubuntu，不支持 CentOS/RHEL
+6. **root 权限**：所有操作都需要 root 权限
 
 ---
 
-## 🆚 与旧版脚本区别
+## 💬 常见问题
 
-| 特性 | 旧版（BDP调优） | 新版（BBR v3 Ultimate） |
-|------|----------------|----------------------|
-| 内核升级 | ❌ 不支持 | ✅ 自动安装 XanMod |
-| BBR 版本 | 系统自带（v1/v2） | ✅ BBR v3 |
-| 队列算法 | 仅 FQ | ✅ FQ/FQ_PIE/CAKE 可选 |
-| 场景优化 | 通用 | ✅ 游戏/VPN/Web 专项优化 |
-| ARM 支持 | ❌ 无 | ✅ ARM64 专用脚本 |
+### Q: 为什么推荐用远程运行而不是下载？
+A: 远程运行每次都是最新版，避免使用缓存的旧版本，一行命令更简洁。
+
+### Q: BBR v3 和 BBR v2 有什么区别？
+A: BBR v3 改进了拥塞窗口计算，减少了丢包，提升了跨国高延迟链路的性能。
+
+### Q: ARM 服务器能用吗？
+A: 可以，脚本会自动检测 ARM64 架构并调用专用安装脚本。
+
+### Q: 虚拟内存（SWAP）应该设置多大？
+A: 使用脚本的智能计算功能（菜单选项 **5** → **4**），会根据物理内存自动推荐最佳大小。
+
+### Q: 安装失败怎么办？
+A: 检查：
+- 磁盘空间是否充足（≥3GB）
+- 网络连接是否正常
+- 系统是否为 Debian/Ubuntu
+- 尝试更换软件源
+
+### Q: Xray 配置修改后无法连接？
+A: 使用菜单选项 **10** 恢复默认配置，或检查备份文件：
+```bash
+ls -la /usr/local/etc/xray/config.json.bak.*
+```
 
 ---
 
@@ -287,10 +405,16 @@ sudo reboot
 
 - **XanMod 官网**: [https://xanmod.org/](https://xanmod.org/)
 - **BBR v3 论文**: [Google BBR v3](https://github.com/google/bbr)
-- **队列算法文档**:
-  - [FQ (Fair Queue)](https://www.kernel.org/doc/html/latest/networking/fq.html)
-  - [FQ_PIE](https://tools.ietf.org/html/rfc8033)
-  - [CAKE](https://www.bufferbloat.net/projects/codel/wiki/CAKE/)
+- **FQ 文档**: [Fair Queue](https://www.kernel.org/doc/html/latest/networking/fq.html)
+- **Xray 文档**: [https://xtls.github.io/](https://xtls.github.io/)
+
+---
+
+## 🌐 相关链接
+
+- **GitHub**: [https://github.com/Eric86777/vps-tcp-tune](https://github.com/Eric86777/vps-tcp-tune)
+- **问题反馈**: [Issues](https://github.com/Eric86777/vps-tcp-tune/issues)
+- **视频教程**: [B站](https://www.bilibili.com/video/BV14K421x7BS)
 
 ---
 
@@ -300,37 +424,21 @@ MIT
 
 ---
 
-## 💬 常见问题
+## 📝 更新日志
 
-### Q: BBR v3 和 BBR v2 有什么区别？
-A: BBR v3 改进了拥塞窗口计算，减少了丢包，提升了跨国高延迟链路的性能。
-
-### Q: 为什么游戏服务器推荐 FQ_PIE？
-A: FQ_PIE 使用主动队列管理（AQM），可降低缓冲区膨胀，减少延迟抖动，适合实时应用。
-
-### Q: CAKE 和 FQ 的主要区别？
-A: CAKE 内置智能流量整形，能自动识别和优先处理游戏/视频流量，适合多用户共享场景。
-
-### Q: ARM 服务器能用吗？
-A: 可以，脚本会自动检测 ARM64 架构并调用专用安装脚本。
-
-### Q: 安装失败怎么办？
-A: 检查磁盘空间、网络连接，确保系统是 Debian/Ubuntu，可尝试更换软件源。
-
-### Q: 虚拟内存（SWAP）应该设置多大？
-A: 脚本提供智能计算功能（菜单选项 5 → 4），会根据你的物理内存自动推荐最佳大小：
-- **< 512MB 内存**：固定 1GB SWAP
-- **512MB - 1GB**：2 倍物理内存
-- **1GB - 2GB**：1.5 倍物理内存
-- **2GB - 4GB**：与内存同大小
-- **≥ 4GB**：固定 4GB SWAP
-
-### Q: 为什么每次都要删除旧脚本？
-A: 确保获取 GitHub 最新版本，避免使用缓存的旧版本导致功能缺失或 bug。
+### v2.0 Ultimate Edition (2025-01-10)
+- ✅ 新增一键远程运行方式
+- ✅ 集成 IPv4/IPv6 优先级设置
+- ✅ 集成 Xray 配置管理（查看/IPv6出站/恢复默认）
+- ✅ 集成虚拟内存智能计算
+- ✅ 集成 7 大网络测试工具
+- ✅ 集成流媒体/AI 解锁检测
+- ✅ 集成 6 大第三方工具脚本
+- ✅ 优化配置冲突检测与清理
+- ✅ 新增立即生效功能（tc fq + MSS clamp）
+- ✅ 完善错误处理和回滚机制
+- ✅ 总计 25+ 实用功能
 
 ---
 
-## 🌐 相关链接
-
-- **GitHub**: [https://github.com/Eric86777/vps-tcp-tune](https://github.com/Eric86777/vps-tcp-tune)
-- **问题反馈**: [Issues](https://github.com/Eric86777/vps-tcp-tune/issues)
+**⭐ 如果这个脚本对你有帮助，欢迎 Star！**
