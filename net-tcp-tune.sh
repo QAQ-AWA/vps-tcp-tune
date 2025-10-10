@@ -1014,6 +1014,148 @@ show_detailed_status() {
     break_end
 }
 
+run_speedtest() {
+    clear
+    echo -e "${gl_kjlan}=== 服务器带宽测试 ===${gl_bai}"
+    echo ""
+
+    # 检测 CPU 架构
+    local cpu_arch=$(uname -m)
+    echo "检测到系统架构: ${gl_huang}${cpu_arch}${gl_bai}"
+    echo ""
+
+    # 检查 speedtest 是否已安装
+    if command -v speedtest &>/dev/null; then
+        echo -e "${gl_lv}Speedtest 已安装，直接运行测试...${gl_bai}"
+        echo "------------------------------------------------"
+        echo ""
+        speedtest
+        echo ""
+        echo "------------------------------------------------"
+        break_end
+        return 0
+    fi
+
+    echo "Speedtest 未安装，正在下载安装..."
+    echo "------------------------------------------------"
+    echo ""
+
+    # 根据架构选择下载链接
+    local download_url
+    local tarball_name
+
+    case "$cpu_arch" in
+        x86_64)
+            download_url="https://install.speedtest.net/app/cli/ookla-speedtest-1.2.0-linux-x86_64.tgz"
+            tarball_name="ookla-speedtest-1.2.0-linux-x86_64.tgz"
+            echo "使用 AMD64 架构版本..."
+            ;;
+        aarch64)
+            download_url="https://install.speedtest.net/app/cli/ookla-speedtest-1.2.0-linux-aarch64.tgz"
+            tarball_name="speedtest.tgz"
+            echo "使用 ARM64 架构版本..."
+            ;;
+        *)
+            echo -e "${gl_hong}错误: 不支持的架构 ${cpu_arch}${gl_bai}"
+            echo "目前仅支持 x86_64 和 aarch64 架构"
+            echo ""
+            break_end
+            return 1
+            ;;
+    esac
+
+    # 切换到临时目录
+    cd /tmp || {
+        echo -e "${gl_hong}错误: 无法切换到 /tmp 目录${gl_bai}"
+        break_end
+        return 1
+    }
+
+    # 下载
+    echo "正在下载..."
+    if [ "$cpu_arch" = "aarch64" ]; then
+        curl -Lo "$tarball_name" "$download_url"
+    else
+        wget "$download_url"
+    fi
+
+    if [ $? -ne 0 ]; then
+        echo -e "${gl_hong}下载失败！${gl_bai}"
+        break_end
+        return 1
+    fi
+
+    # 解压
+    echo "正在解压..."
+    tar -xvzf "$tarball_name"
+
+    if [ $? -ne 0 ]; then
+        echo -e "${gl_hong}解压失败！${gl_bai}"
+        rm -f "$tarball_name"
+        break_end
+        return 1
+    fi
+
+    # 移动到系统目录
+    echo "正在安装..."
+    sudo mv speedtest /usr/local/bin/
+
+    if [ $? -ne 0 ]; then
+        echo -e "${gl_hong}安装失败！${gl_bai}"
+        rm -f "$tarball_name"
+        break_end
+        return 1
+    fi
+
+    # 清理临时文件
+    rm -f "$tarball_name"
+
+    echo -e "${gl_lv}✅ Speedtest 安装成功！${gl_bai}"
+    echo ""
+    echo "开始带宽测试..."
+    echo "------------------------------------------------"
+    echo ""
+
+    # 运行测试
+    speedtest
+
+    echo ""
+    echo "------------------------------------------------"
+    break_end
+}
+
+run_backtrace() {
+    clear
+    echo -e "${gl_kjlan}=== 三网回程路由测试 ===${gl_bai}"
+    echo ""
+    echo "正在运行三网回程路由测试脚本..."
+    echo "------------------------------------------------"
+    echo ""
+
+    # 执行三网回程路由测试脚本
+    curl https://raw.githubusercontent.com/ludashi2020/backtrace/main/install.sh -sSf | sh
+
+    echo ""
+    echo "------------------------------------------------"
+    break_end
+}
+
+run_ns_detect() {
+    clear
+    echo -e "${gl_kjlan}=== NS一键检测脚本 ===${gl_bai}"
+    echo ""
+    echo "正在运行 NS 一键检测脚本..."
+    echo "------------------------------------------------"
+    echo ""
+
+    # 执行 NS 一键检测脚本
+    bash <(curl -sL https://run.NodeQuality.com)
+
+    echo ""
+    echo "------------------------------------------------"
+    break_end
+}
+
 #=============================================================================
 # 主菜单
 #=============================================================================
@@ -1054,11 +1196,14 @@ show_main_menu() {
     echo ""
     echo -e "${gl_kjlan}[系统信息]${gl_bai}"
     echo "11. 查看详细状态"
-    echo "12. IP媒体/AI解锁检测"
-    echo "13. PF_realm转发脚本"
-    echo "14. 酷雪云脚本"
-    echo "15. 御坂美琴一键双协议"
-    echo "16. NS论坛的cake调优"
+    echo "12. 服务器带宽测试"
+    echo "13. 三网回程路由测试"
+    echo "14. NS一键检测脚本"
+    echo "15. IP媒体/AI解锁检测"
+    echo "16. PF_realm转发脚本"
+    echo "17. 酷雪云脚本"
+    echo "18. 御坂美琴一键双协议"
+    echo "19. NS论坛的cake调优"
     echo ""
     echo "0. 退出脚本"
     echo "------------------------------------------------"
@@ -1114,18 +1259,27 @@ show_main_menu() {
             show_detailed_status
             ;;
         12)
-            run_unlock_check
+            run_speedtest
             ;;
         13)
-            run_pf_realm
+            run_backtrace
             ;;
         14)
-            run_kxy_script
+            run_ns_detect
             ;;
         15)
-            run_misaka_xray
+            run_unlock_check
             ;;
         16)
+            run_pf_realm
+            ;;
+        17)
+            run_kxy_script
+            ;;
+        18)
+            run_misaka_xray
+            ;;
+        19)
             run_ns_cake
             ;;
         0)
