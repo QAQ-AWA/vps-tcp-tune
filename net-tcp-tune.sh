@@ -479,6 +479,166 @@ server_reboot() {
 }
 
 #=============================================================================
+# 带宽检测和缓冲区计算函数
+#=============================================================================
+
+# 带宽检测函数
+detect_bandwidth() {
+    echo ""
+    echo -e "${gl_kjlan}=== 服务器带宽检测 ===${gl_bai}"
+    echo ""
+    echo "请选择带宽配置方式："
+    echo "1. 自动检测（运行 speedtest，推荐）"
+    echo "2. 使用通用值（16MB，跳过检测）"
+    echo ""
+    
+    read -e -p "请输入选择 [1]: " bw_choice
+    bw_choice=${bw_choice:-1}
+    
+    case "$bw_choice" in
+        1)
+            # 自动检测带宽
+            echo ""
+            echo -e "${gl_huang}正在运行 speedtest 测速...${gl_bai}"
+            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+            echo ""
+            
+            # 检查speedtest是否安装
+            if ! command -v speedtest &>/dev/null; then
+                echo -e "${gl_huang}speedtest 未安装，正在安装...${gl_bai}"
+                # 调用脚本中已有的安装逻辑（简化版）
+                local cpu_arch=$(uname -m)
+                local download_url
+                case "$cpu_arch" in
+                    x86_64)
+                        download_url="https://install.speedtest.net/app/cli/ookla-speedtest-1.2.0-linux-x86_64.tgz"
+                        ;;
+                    aarch64)
+                        download_url="https://install.speedtest.net/app/cli/ookla-speedtest-1.2.0-linux-aarch64.tgz"
+                        ;;
+                    *)
+                        echo -e "${gl_hong}错误: 不支持的架构 ${cpu_arch}${gl_bai}"
+                        echo "将使用通用值 16MB"
+                        echo "500"
+                        return 1
+                        ;;
+                esac
+                
+                cd /tmp
+                wget -q "$download_url" -O speedtest.tgz && \
+                tar -xzf speedtest.tgz && \
+                sudo mv speedtest /usr/local/bin/ && \
+                rm -f speedtest.tgz
+                
+                if [ $? -ne 0 ]; then
+                    echo -e "${gl_hong}安装失败，将使用通用值${gl_bai}"
+                    echo "500"
+                    return 1
+                fi
+            fi
+            
+            # 运行speedtest并捕获输出
+            local speedtest_output=$(speedtest 2>&1)
+            echo "$speedtest_output"
+            echo ""
+            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+            echo ""
+            
+            # 提取Upload速度（Mbps）
+            local upload_speed=$(echo "$speedtest_output" | grep -i "Upload:" | grep -oP '\d+\.\d+' | head -n1)
+            
+            if [ -z "$upload_speed" ]; then
+                echo -e "${gl_huang}无法自动检测带宽，将使用通用值 16MB${gl_bai}"
+                echo "500"
+                return 1
+            fi
+            
+            # 转为整数
+            local upload_mbps=${upload_speed%.*}
+            
+            echo -e "${gl_lv}✅ 检测到上传带宽: ${upload_mbps} Mbps${gl_bai}"
+            echo ""
+            
+            # 返回带宽值
+            echo "$upload_mbps"
+            return 0
+            ;;
+        2)
+            # 使用通用值
+            echo ""
+            echo -e "${gl_huang}使用通用配置: 16MB 缓冲区${gl_bai}"
+            echo "说明: 适合大多数 500-2000 Mbps 带宽场景"
+            echo ""
+            # 返回对应1000Mbps的值
+            echo "1000"
+            return 0
+            ;;
+        *)
+            echo -e "${gl_huang}无效选择，使用通用值${gl_bai}"
+            echo "1000"
+            return 1
+            ;;
+    esac
+}
+
+# 缓冲区大小计算函数
+calculate_buffer_size() {
+    local bandwidth=$1
+    local buffer_mb
+    local bandwidth_level
+    
+    # 根据带宽范围计算推荐缓冲区
+    if [ "$bandwidth" -lt 500 ]; then
+        buffer_mb=8
+        bandwidth_level="小带宽（< 500 Mbps）"
+    elif [ "$bandwidth" -lt 1000 ]; then
+        buffer_mb=12
+        bandwidth_level="中等带宽（500-1000 Mbps）"
+    elif [ "$bandwidth" -lt 2000 ]; then
+        buffer_mb=16
+        bandwidth_level="标准带宽（1-2 Gbps）"
+    elif [ "$bandwidth" -lt 5000 ]; then
+        buffer_mb=24
+        bandwidth_level="高带宽（2-5 Gbps）"
+    elif [ "$bandwidth" -lt 10000 ]; then
+        buffer_mb=28
+        bandwidth_level="超高带宽（5-10 Gbps）"
+    else
+        buffer_mb=32
+        bandwidth_level="极高带宽（> 10 Gbps）"
+    fi
+    
+    # 显示计算结果
+    echo ""
+    echo -e "${gl_kjlan}根据带宽计算最优缓冲区:${gl_bai}"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo -e "  检测带宽: ${gl_huang}${bandwidth} Mbps${gl_bai}"
+    echo -e "  带宽等级: ${bandwidth_level}"
+    echo -e "  推荐缓冲区: ${gl_lv}${buffer_mb} MB${gl_bai}"
+    echo -e "  说明: 适合该带宽的最优配置"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo ""
+    
+    # 询问确认
+    read -e -p "$(echo -e "${gl_huang}是否使用推荐值 ${buffer_mb}MB？(Y/N) [Y]: ${gl_bai}")" confirm
+    confirm=${confirm:-Y}
+    
+    case "$confirm" in
+        [Yy])
+            # 返回缓冲区大小（MB）
+            echo "$buffer_mb"
+            return 0
+            ;;
+        *)
+            echo ""
+            echo -e "${gl_huang}已取消，将使用通用值 16MB${gl_bai}"
+            echo "16"
+            return 1
+            ;;
+    esac
+}
+
+#=============================================================================
 # SWAP智能检测和建议函数（集成到选项2/3）
 #=============================================================================
 check_and_suggest_swap() {
@@ -677,31 +837,40 @@ apply_mss_clamp() {
 }
 
 #=============================================================================
-# BBR 配置函数（改进版 - 确保配置生效）
+# BBR 配置函数（智能检测版）
 #=============================================================================
 
-bbr_configure() {
-    local qdisc=$1
-    local description=$2
-    
-    echo -e "${gl_kjlan}=== 配置 BBR v3 + ${qdisc} (≤1GB 内存增强版) ===${gl_bai}"
+# 直连/落地优化配置
+bbr_configure_direct() {
+    echo -e "${gl_kjlan}=== 配置 BBR v3 + FQ 直连/落地优化（智能检测版） ===${gl_bai}"
     echo ""
     
     # 步骤 0：SWAP智能检测和建议
-    echo -e "${gl_zi}[步骤 1/5] 检测虚拟内存（SWAP）配置...${gl_bai}"
+    echo -e "${gl_zi}[步骤 1/6] 检测虚拟内存（SWAP）配置...${gl_bai}"
     check_and_suggest_swap
     
+    # 步骤 0.5：带宽检测和缓冲区计算
     echo ""
-    echo -e "${gl_zi}[步骤 2/5] 清理配置冲突...${gl_bai}"
+    echo -e "${gl_zi}[步骤 2/6] 检测服务器带宽并计算最优缓冲区...${gl_bai}"
+    
+    local detected_bandwidth=$(detect_bandwidth)
+    local buffer_mb=$(calculate_buffer_size "$detected_bandwidth")
+    local buffer_bytes=$((buffer_mb * 1024 * 1024))
+    
+    echo -e "${gl_lv}✅ 将使用 ${buffer_mb}MB 缓冲区配置${gl_bai}"
+    sleep 2
+    
+    echo ""
+    echo -e "${gl_zi}[步骤 3/6] 清理配置冲突...${gl_bai}"
     echo "正在检查配置冲突..."
     
-    # 1.1 备份主配置文件（如果还没备份）
+    # 备份主配置文件（如果还没备份）
     if [ -f /etc/sysctl.conf ] && ! [ -f /etc/sysctl.conf.bak.original ]; then
         cp /etc/sysctl.conf /etc/sysctl.conf.bak.original
         echo "已备份: /etc/sysctl.conf -> /etc/sysctl.conf.bak.original"
     fi
     
-    # 1.2 注释掉 /etc/sysctl.conf 中的 TCP 缓冲区配置（避免覆盖）
+    # 注释掉 /etc/sysctl.conf 中的 TCP 缓冲区配置（避免覆盖）
     if [ -f /etc/sysctl.conf ]; then
         sed -i '/^net.ipv4.tcp_wmem/s/^/# /' /etc/sysctl.conf 2>/dev/null
         sed -i '/^net.ipv4.tcp_rmem/s/^/# /' /etc/sysctl.conf 2>/dev/null
@@ -710,50 +879,252 @@ bbr_configure() {
         echo "已清理 /etc/sysctl.conf 中的冲突配置"
     fi
     
-    # 1.3 删除可能存在的软链接
+    # 删除可能存在的软链接
     if [ -L /etc/sysctl.d/99-sysctl.conf ]; then
         rm -f /etc/sysctl.d/99-sysctl.conf
         echo "已删除配置软链接"
     fi
     
-    # 步骤 0.5：检查并清理可能覆盖的新旧配置冲突
+    # 检查并清理可能覆盖的新旧配置冲突
     check_and_clean_conflicts
 
-    # 步骤 2：创建独立配置文件
+    # 步骤 3：创建独立配置文件（使用动态缓冲区）
     echo ""
-    echo -e "${gl_zi}[步骤 3/5] 创建配置文件...${gl_bai}"
+    echo -e "${gl_zi}[步骤 4/6] 创建配置文件...${gl_bai}"
     echo "正在创建新配置..."
+    
+    # 获取物理内存用于虚拟内存参数调整
+    local mem_total=$(free -m | awk 'NR==2{print $2}')
+    local vm_swappiness=10
+    local vm_dirty_ratio=15
+    local vm_min_free_kbytes=65536
+    
+    # 根据内存大小微调虚拟内存参数
+    if [ "$mem_total" -lt 2048 ]; then
+        vm_swappiness=20
+        vm_dirty_ratio=20
+        vm_min_free_kbytes=32768
+    fi
+    
     cat > "$SYSCTL_CONF" << EOF
-# BBR v3 Ultimate Configuration (Enhanced Edition)
+# BBR v3 Direct/Endpoint Configuration (Intelligent Detection Edition)
 # Generated on $(date)
+# Bandwidth: ${detected_bandwidth} Mbps | Buffer: ${buffer_mb} MB
 
 # 队列调度算法
-net.core.default_qdisc=${qdisc}
+net.core.default_qdisc=fq
 
 # 拥塞控制算法
 net.ipv4.tcp_congestion_control=bbr
 
-# TCP 缓冲区优化（16MB 上限，适合小内存 VPS）
-net.core.rmem_max=16777216
-net.core.wmem_max=16777216
-net.ipv4.tcp_rmem=4096 87380 16777216
-net.ipv4.tcp_wmem=4096 65536 16777216
+# TCP 缓冲区优化（智能检测：${buffer_mb}MB）
+net.core.rmem_max=${buffer_bytes}
+net.core.wmem_max=${buffer_bytes}
+net.ipv4.tcp_rmem=4096 87380 ${buffer_bytes}
+net.ipv4.tcp_wmem=4096 65536 ${buffer_bytes}
 
-# ===== 精华参数优化（1GB内存版）=====
+# ===== 直连/落地优化参数 =====
 
-# TIME_WAIT 重用（高并发必备）
+# TIME_WAIT 重用（启用，提高并发）
 net.ipv4.tcp_tw_reuse=1
 
-# 端口范围扩大（代理/转发必备）
+# 端口范围（最大化）
 net.ipv4.ip_local_port_range=1024 65535
 
-# 连接队列增大（Web服务器必备）
+# 连接队列（高性能）
 net.core.somaxconn=4096
+net.ipv4.tcp_max_syn_backlog=8192
 
-# 虚拟内存优化（1GB内存优化）
-vm.swappiness=20
-vm.dirty_ratio=20
+# 网络队列（高带宽优化）
+net.core.netdev_max_backlog=16384
+
+# 高级TCP优化
+net.ipv4.tcp_slow_start_after_idle=0
+net.ipv4.tcp_mtu_probing=1
+
+# 虚拟内存优化（根据物理内存调整）
+vm.swappiness=${vm_swappiness}
+vm.dirty_ratio=${vm_dirty_ratio}
 vm.dirty_background_ratio=5
+vm.overcommit_memory=1
+vm.min_free_kbytes=${vm_min_free_kbytes}
+vm.vfs_cache_pressure=50
+
+# CPU调度优化
+kernel.sched_autogroup_enabled=0
+kernel.numa_balancing=0
+EOF
+
+    # 步骤 4：应用配置
+    echo ""
+    echo -e "${gl_zi}[步骤 5/6] 应用所有优化参数...${gl_bai}"
+    echo "正在应用配置..."
+    sysctl -p "$SYSCTL_CONF" > /dev/null 2>&1
+    
+    # 立即应用 fq，并启用 MSS clamp（无需重启）
+    echo "正在应用队列与防分片（无需重启）..."
+    apply_tc_fq_now >/dev/null 2>&1
+    apply_mss_clamp enable >/dev/null 2>&1
+    
+    # 配置文件描述符限制
+    echo "正在优化文件描述符限制..."
+    if ! grep -q "BBR - 文件描述符优化" /etc/security/limits.conf 2>/dev/null; then
+        cat >> /etc/security/limits.conf << 'LIMITSEOF'
+# BBR - 文件描述符优化
+* soft nofile 65535
+* hard nofile 65535
+LIMITSEOF
+    fi
+    ulimit -n 65535 2>/dev/null
+    
+    # 禁用透明大页面
+    if [ -f /sys/kernel/mm/transparent_hugepage/enabled ]; then
+        echo never > /sys/kernel/mm/transparent_hugepage/enabled 2>/dev/null
+    fi
+
+    # 步骤 5：验证配置是否真正生效
+    echo ""
+    echo -e "${gl_zi}[步骤 6/6] 验证配置...${gl_bai}"
+    
+    local actual_qdisc=$(sysctl -n net.core.default_qdisc 2>/dev/null)
+    local actual_cc=$(sysctl -n net.ipv4.tcp_congestion_control 2>/dev/null)
+    local actual_wmem=$(sysctl -n net.ipv4.tcp_wmem 2>/dev/null | awk '{print $3}')
+    local actual_rmem=$(sysctl -n net.ipv4.tcp_rmem 2>/dev/null | awk '{print $3}')
+    
+    echo ""
+    echo -e "${gl_kjlan}=== 配置验证 ===${gl_bai}"
+    
+    # 验证队列算法
+    if [ "$actual_qdisc" = "fq" ]; then
+        echo -e "队列算法: ${gl_lv}$actual_qdisc ✓${gl_bai}"
+    else
+        echo -e "队列算法: ${gl_huang}$actual_qdisc (期望: fq) ⚠${gl_bai}"
+    fi
+    
+    # 验证拥塞控制
+    if [ "$actual_cc" = "bbr" ]; then
+        echo -e "拥塞控制: ${gl_lv}$actual_cc ✓${gl_bai}"
+    else
+        echo -e "拥塞控制: ${gl_huang}$actual_cc (期望: bbr) ⚠${gl_bai}"
+    fi
+    
+    # 验证缓冲区（动态）
+    local actual_wmem_mb=$((actual_wmem / 1048576))
+    local actual_rmem_mb=$((actual_rmem / 1048576))
+    
+    if [ "$actual_wmem" = "$buffer_bytes" ]; then
+        echo -e "发送缓冲区: ${gl_lv}${buffer_mb}MB ✓${gl_bai}"
+    else
+        echo -e "发送缓冲区: ${gl_huang}${actual_wmem_mb}MB (期望: ${buffer_mb}MB) ⚠${gl_bai}"
+    fi
+    
+    if [ "$actual_rmem" = "$buffer_bytes" ]; then
+        echo -e "接收缓冲区: ${gl_lv}${buffer_mb}MB ✓${gl_bai}"
+    else
+        echo -e "接收缓冲区: ${gl_huang}${actual_rmem_mb}MB (期望: ${buffer_mb}MB) ⚠${gl_bai}"
+    fi
+    
+    echo ""
+    
+    # 最终判断
+    if [ "$actual_qdisc" = "fq" ] && [ "$actual_cc" = "bbr" ] && \
+       [ "$actual_wmem" = "$buffer_bytes" ] && [ "$actual_rmem" = "$buffer_bytes" ]; then
+        echo -e "${gl_lv}✅ BBR v3 直连/落地优化配置完成并已生效！${gl_bai}"
+        echo -e "${gl_zi}配置说明: ${buffer_mb}MB 缓冲区（${detected_bandwidth} Mbps 带宽），适合直连/落地场景${gl_bai}"
+    else
+        echo -e "${gl_huang}⚠️ 配置已保存但部分参数未生效${gl_bai}"
+        echo -e "${gl_huang}建议执行以下操作：${gl_bai}"
+        echo "1. 检查是否有其他配置文件冲突"
+        echo "2. 重启服务器使配置完全生效: reboot"
+    fi
+}
+
+# 中转优化配置（固定4MB）
+bbr_configure_relay() {
+    echo -e "${gl_kjlan}=== 配置 BBR v3 + FQ 中转优化（快速转发模式） ===${gl_bai}"
+    echo ""
+    
+    echo -e "${gl_zi}配置说明:${gl_bai}"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo "  缓冲区大小: 4MB（小缓冲区，快速转发）"
+    echo "  TIME_WAIT重用: 禁用（避免端口冲突）"
+    echo "  端口范围: 5000-65535（避开系统端口）"
+    echo "  适用场景: 所有中转服务器（第一层/第二层/多层）"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo ""
+    
+    # 步骤 1：SWAP智能检测和建议
+    echo -e "${gl_zi}[步骤 1/5] 检测虚拟内存（SWAP）配置...${gl_bai}"
+    check_and_suggest_swap
+    
+    echo ""
+    echo -e "${gl_zi}[步骤 2/5] 清理配置冲突...${gl_bai}"
+    echo "正在检查配置冲突..."
+    
+    # 备份主配置文件（如果还没备份）
+    if [ -f /etc/sysctl.conf ] && ! [ -f /etc/sysctl.conf.bak.original ]; then
+        cp /etc/sysctl.conf /etc/sysctl.conf.bak.original
+        echo "已备份: /etc/sysctl.conf -> /etc/sysctl.conf.bak.original"
+    fi
+    
+    # 注释掉 /etc/sysctl.conf 中的 TCP 缓冲区配置（避免覆盖）
+    if [ -f /etc/sysctl.conf ]; then
+        sed -i '/^net.ipv4.tcp_wmem/s/^/# /' /etc/sysctl.conf 2>/dev/null
+        sed -i '/^net.ipv4.tcp_rmem/s/^/# /' /etc/sysctl.conf 2>/dev/null
+        sed -i '/^net.core.rmem_max/s/^/# /' /etc/sysctl.conf 2>/dev/null
+        sed -i '/^net.core.wmem_max/s/^/# /' /etc/sysctl.conf 2>/dev/null
+        echo "已清理 /etc/sysctl.conf 中的冲突配置"
+    fi
+    
+    # 删除可能存在的软链接
+    if [ -L /etc/sysctl.d/99-sysctl.conf ]; then
+        rm -f /etc/sysctl.d/99-sysctl.conf
+        echo "已删除配置软链接"
+    fi
+    
+    # 检查并清理可能覆盖的新旧配置冲突
+    check_and_clean_conflicts
+
+    # 步骤 2：创建独立配置文件（固定4MB）
+    echo ""
+    echo -e "${gl_zi}[步骤 3/5] 创建配置文件...${gl_bai}"
+    echo "正在创建新配置..."
+    cat > "$SYSCTL_CONF" << 'EOF'
+# BBR v3 Relay Configuration (Fixed 4MB Fast Forward Mode)
+# Generated on $(date)
+# Optimized for all relay/forwarding servers
+
+# 队列调度算法
+net.core.default_qdisc=fq
+
+# 拥塞控制算法
+net.ipv4.tcp_congestion_control=bbr
+
+# TCP 缓冲区优化（固定4MB，快速转发）
+net.core.rmem_max=4194304
+net.core.wmem_max=4194304
+net.ipv4.tcp_rmem=4096 87380 4194304
+net.ipv4.tcp_wmem=4096 65536 4194304
+
+# ===== 中转优化参数 =====
+
+# TIME_WAIT 重用（禁用，避免端口冲突）
+net.ipv4.tcp_tw_reuse=0
+
+# 端口范围（避开低端口，防止冲突）
+net.ipv4.ip_local_port_range=5000 65535
+
+# 连接队列（适中）
+net.core.somaxconn=2048
+net.ipv4.tcp_max_syn_backlog=4096
+
+# 网络队列（保守，快速转发）
+net.core.netdev_max_backlog=8192
+
+# 虚拟内存优化（保守）
+vm.swappiness=30
+vm.dirty_ratio=20
+vm.dirty_background_ratio=10
 vm.overcommit_memory=1
 vm.min_free_kbytes=32768
 vm.vfs_cache_pressure=50
@@ -763,29 +1134,29 @@ kernel.sched_autogroup_enabled=0
 kernel.numa_balancing=0
 EOF
 
-    # 步骤 3：应用配置（只加载此配置文件）
+    # 步骤 3：应用配置
     echo ""
     echo -e "${gl_zi}[步骤 4/5] 应用所有优化参数...${gl_bai}"
     echo "正在应用配置..."
     sysctl -p "$SYSCTL_CONF" > /dev/null 2>&1
     
-    # 步骤 3.5：立即应用 fq，并启用 MSS clamp（无需重启）
+    # 立即应用 fq，并启用 MSS clamp（无需重启）
     echo "正在应用队列与防分片（无需重启）..."
     apply_tc_fq_now >/dev/null 2>&1
     apply_mss_clamp enable >/dev/null 2>&1
     
-    # 步骤 3.6：配置文件描述符限制
+    # 配置文件描述符限制
     echo "正在优化文件描述符限制..."
-    if ! grep -q "BBR Ultimate - 文件描述符优化" /etc/security/limits.conf 2>/dev/null; then
+    if ! grep -q "BBR - 文件描述符优化" /etc/security/limits.conf 2>/dev/null; then
         cat >> /etc/security/limits.conf << 'LIMITSEOF'
-# BBR Ultimate - 文件描述符优化
+# BBR - 文件描述符优化
 * soft nofile 65535
 * hard nofile 65535
 LIMITSEOF
     fi
     ulimit -n 65535 2>/dev/null
     
-    # 步骤 3.7：禁用透明大页面
+    # 禁用透明大页面
     if [ -f /sys/kernel/mm/transparent_hugepage/enabled ]; then
         echo never > /sys/kernel/mm/transparent_hugepage/enabled 2>/dev/null
     fi
@@ -798,15 +1169,16 @@ LIMITSEOF
     local actual_cc=$(sysctl -n net.ipv4.tcp_congestion_control 2>/dev/null)
     local actual_wmem=$(sysctl -n net.ipv4.tcp_wmem 2>/dev/null | awk '{print $3}')
     local actual_rmem=$(sysctl -n net.ipv4.tcp_rmem 2>/dev/null | awk '{print $3}')
+    local actual_tw_reuse=$(sysctl -n net.ipv4.tcp_tw_reuse 2>/dev/null)
     
     echo ""
     echo -e "${gl_kjlan}=== 配置验证 ===${gl_bai}"
     
     # 验证队列算法
-    if [ "$actual_qdisc" = "$qdisc" ]; then
+    if [ "$actual_qdisc" = "fq" ]; then
         echo -e "队列算法: ${gl_lv}$actual_qdisc ✓${gl_bai}"
     else
-        echo -e "队列算法: ${gl_huang}$actual_qdisc (期望: $qdisc) ⚠${gl_bai}"
+        echo -e "队列算法: ${gl_huang}$actual_qdisc (期望: fq) ⚠${gl_bai}"
     fi
     
     # 验证拥塞控制
@@ -816,198 +1188,36 @@ LIMITSEOF
         echo -e "拥塞控制: ${gl_huang}$actual_cc (期望: bbr) ⚠${gl_bai}"
     fi
     
-    # 验证发送缓冲区
-    if [ "$actual_wmem" = "16777216" ]; then
-        echo -e "发送缓冲区: ${gl_lv}16MB ✓${gl_bai}"
+    # 验证缓冲区（固定4MB）
+    if [ "$actual_wmem" = "4194304" ]; then
+        echo -e "发送缓冲区: ${gl_lv}4MB ✓${gl_bai}"
     else
-        echo -e "发送缓冲区: ${gl_huang}$(echo "scale=2; $actual_wmem / 1048576" | bc)MB (期望: 16MB) ⚠${gl_bai}"
+        local actual_wmem_mb=$((actual_wmem / 1048576))
+        echo -e "发送缓冲区: ${gl_huang}${actual_wmem_mb}MB (期望: 4MB) ⚠${gl_bai}"
     fi
     
-    # 验证接收缓冲区
-    if [ "$actual_rmem" = "16777216" ]; then
-        echo -e "接收缓冲区: ${gl_lv}16MB ✓${gl_bai}"
+    if [ "$actual_rmem" = "4194304" ]; then
+        echo -e "接收缓冲区: ${gl_lv}4MB ✓${gl_bai}"
     else
-        echo -e "接收缓冲区: ${gl_huang}$(echo "scale=2; $actual_rmem / 1048576" | bc)MB (期望: 16MB) ⚠${gl_bai}"
+        local actual_rmem_mb=$((actual_rmem / 1048576))
+        echo -e "接收缓冲区: ${gl_huang}${actual_rmem_mb}MB (期望: 4MB) ⚠${gl_bai}"
+    fi
+    
+    # 验证TIME_WAIT重用（应该禁用）
+    if [ "$actual_tw_reuse" = "0" ]; then
+        echo -e "TIME_WAIT重用: ${gl_lv}禁用 ✓${gl_bai}"
+    else
+        echo -e "TIME_WAIT重用: ${gl_huang}启用 (期望: 禁用) ⚠${gl_bai}"
     fi
     
     echo ""
     
     # 最终判断
-    if [ "$actual_qdisc" = "$qdisc" ] && [ "$actual_cc" = "bbr" ] && \
-       [ "$actual_wmem" = "16777216" ] && [ "$actual_rmem" = "16777216" ]; then
-        echo -e "${gl_lv}✅ BBR v3 + ${qdisc} 配置完成并已生效！${gl_bai}"
-        echo -e "${gl_zi}优化说明: ${description}${gl_bai}"
-    else
-        echo -e "${gl_huang}⚠️ 配置已保存但部分参数未生效${gl_bai}"
-        echo -e "${gl_huang}建议执行以下操作：${gl_bai}"
-        echo "1. 检查是否有其他配置文件冲突"
-        echo "2. 重启服务器使配置完全生效: reboot"
-    fi
-}
-
-bbr_configure_2gb() {
-    local qdisc=$1
-    local description=$2
-    
-    echo -e "${gl_kjlan}=== 配置 BBR v3 + ${qdisc} (2GB+ 内存增强版) ===${gl_bai}"
-    echo ""
-    
-    # 步骤 0：SWAP智能检测和建议
-    echo -e "${gl_zi}[步骤 1/5] 检测虚拟内存（SWAP）配置...${gl_bai}"
-    check_and_suggest_swap
-    
-    echo ""
-    echo -e "${gl_zi}[步骤 2/5] 清理配置冲突...${gl_bai}"
-    echo "正在检查配置冲突..."
-    
-    # 1.1 备份主配置文件（如果还没备份）
-    if [ -f /etc/sysctl.conf ] && ! [ -f /etc/sysctl.conf.bak.original ]; then
-        cp /etc/sysctl.conf /etc/sysctl.conf.bak.original
-        echo "已备份: /etc/sysctl.conf -> /etc/sysctl.conf.bak.original"
-    fi
-    
-    # 1.2 注释掉 /etc/sysctl.conf 中的 TCP 缓冲区配置（避免覆盖）
-    if [ -f /etc/sysctl.conf ]; then
-        sed -i '/^net.ipv4.tcp_wmem/s/^/# /' /etc/sysctl.conf 2>/dev/null
-        sed -i '/^net.ipv4.tcp_rmem/s/^/# /' /etc/sysctl.conf 2>/dev/null
-        sed -i '/^net.core.rmem_max/s/^/# /' /etc/sysctl.conf 2>/dev/null
-        sed -i '/^net.core.wmem_max/s/^/# /' /etc/sysctl.conf 2>/dev/null
-        echo "已清理 /etc/sysctl.conf 中的冲突配置"
-    fi
-    
-    # 1.3 删除可能存在的软链接
-    if [ -L /etc/sysctl.d/99-sysctl.conf ]; then
-        rm -f /etc/sysctl.d/99-sysctl.conf
-        echo "已删除配置软链接"
-    fi
-    
-    # 步骤 0.5：检查并清理可能覆盖的新旧配置冲突
-    check_and_clean_conflicts
-
-    # 步骤 2：创建独立配置文件（2GB 内存版本）
-    echo ""
-    echo -e "${gl_zi}[步骤 3/5] 创建配置文件...${gl_bai}"
-    echo "正在创建新配置..."
-    cat > "$SYSCTL_CONF" << EOF
-# BBR v3 Ultimate Configuration (2GB+ Memory - Enhanced Edition)
-# Generated on $(date)
-
-# 队列调度算法
-net.core.default_qdisc=${qdisc}
-
-# 拥塞控制算法
-net.ipv4.tcp_congestion_control=bbr
-
-# TCP 缓冲区优化（32MB 上限，256KB 默认值，适合 2GB+ 内存 VPS）
-net.core.rmem_max=33554432
-net.core.wmem_max=33554432
-net.ipv4.tcp_rmem=4096 262144 33554432
-net.ipv4.tcp_wmem=4096 262144 33554432
-
-# 高级优化（适合高带宽场景）
-net.ipv4.tcp_slow_start_after_idle=0
-net.ipv4.tcp_mtu_probing=1
-net.core.netdev_max_backlog=16384
-net.ipv4.tcp_max_syn_backlog=8192
-
-# ===== 精华参数优化（完整版）=====
-
-# TIME_WAIT 重用（高并发必备）
-net.ipv4.tcp_tw_reuse=1
-
-# 端口范围扩大（代理/转发必备）
-net.ipv4.ip_local_port_range=1024 65535
-
-# 连接队列增大（Web服务器必备）
-net.core.somaxconn=4096
-
-# 虚拟内存优化（2GB+完整版）
-vm.swappiness=10
-vm.dirty_ratio=15
-vm.dirty_background_ratio=5
-vm.overcommit_memory=1
-vm.min_free_kbytes=65536
-vm.vfs_cache_pressure=50
-
-# CPU调度优化
-kernel.sched_autogroup_enabled=0
-kernel.numa_balancing=0
-EOF
-
-    # 步骤 3：应用配置（只加载此配置文件）
-    echo ""
-    echo -e "${gl_zi}[步骤 4/5] 应用所有优化参数...${gl_bai}"
-    echo "正在应用配置..."
-    sysctl -p "$SYSCTL_CONF" > /dev/null 2>&1
-    
-    # 步骤 3.5：立即应用 fq，并启用 MSS clamp（无需重启）
-    echo "正在应用队列与防分片（无需重启）..."
-    apply_tc_fq_now >/dev/null 2>&1
-    apply_mss_clamp enable >/dev/null 2>&1
-    
-    # 步骤 3.6：配置文件描述符限制
-    echo "正在优化文件描述符限制..."
-    if ! grep -q "BBR Ultimate - 文件描述符优化" /etc/security/limits.conf 2>/dev/null; then
-        cat >> /etc/security/limits.conf << 'LIMITSEOF'
-# BBR Ultimate - 文件描述符优化
-* soft nofile 65535
-* hard nofile 65535
-LIMITSEOF
-    fi
-    ulimit -n 65535 2>/dev/null
-    
-    # 步骤 3.7：禁用透明大页面
-    if [ -f /sys/kernel/mm/transparent_hugepage/enabled ]; then
-        echo never > /sys/kernel/mm/transparent_hugepage/enabled 2>/dev/null
-    fi
-
-    # 步骤 4：验证配置是否真正生效
-    echo ""
-    echo -e "${gl_zi}[步骤 5/5] 验证配置...${gl_bai}"
-    
-    local actual_qdisc=$(sysctl -n net.core.default_qdisc 2>/dev/null)
-    local actual_cc=$(sysctl -n net.ipv4.tcp_congestion_control 2>/dev/null)
-    local actual_wmem=$(sysctl -n net.ipv4.tcp_wmem 2>/dev/null | awk '{print $3}')
-    local actual_rmem=$(sysctl -n net.ipv4.tcp_rmem 2>/dev/null | awk '{print $3}')
-    
-    echo ""
-    echo -e "${gl_kjlan}=== 配置验证 ===${gl_bai}"
-    
-    # 验证队列算法
-    if [ "$actual_qdisc" = "$qdisc" ]; then
-        echo -e "队列算法: ${gl_lv}$actual_qdisc ✓${gl_bai}"
-    else
-        echo -e "队列算法: ${gl_huang}$actual_qdisc (期望: $qdisc) ⚠${gl_bai}"
-    fi
-    
-    # 验证拥塞控制
-    if [ "$actual_cc" = "bbr" ]; then
-        echo -e "拥塞控制: ${gl_lv}$actual_cc ✓${gl_bai}"
-    else
-        echo -e "拥塞控制: ${gl_huang}$actual_cc (期望: bbr) ⚠${gl_bai}"
-    fi
-    
-    # 验证发送缓冲区
-    if [ "$actual_wmem" = "33554432" ]; then
-        echo -e "发送缓冲区: ${gl_lv}32MB ✓${gl_bai}"
-    else
-        echo -e "发送缓冲区: ${gl_huang}$(echo "scale=2; $actual_wmem / 1048576" | bc)MB (期望: 32MB) ⚠${gl_bai}"
-    fi
-    
-    # 验证接收缓冲区
-    if [ "$actual_rmem" = "33554432" ]; then
-        echo -e "接收缓冲区: ${gl_lv}32MB ✓${gl_bai}"
-    else
-        echo -e "接收缓冲区: ${gl_huang}$(echo "scale=2; $actual_rmem / 1048576" | bc)MB (期望: 32MB) ⚠${gl_bai}"
-    fi
-    
-    echo ""
-    
-    # 最终判断
-    if [ "$actual_qdisc" = "$qdisc" ] && [ "$actual_cc" = "bbr" ] && \
-       [ "$actual_wmem" = "33554432" ] && [ "$actual_rmem" = "33554432" ]; then
-        echo -e "${gl_lv}✅ BBR v3 + ${qdisc} (2GB配置) 完成并已生效！${gl_bai}"
-        echo -e "${gl_zi}优化说明: ${description}${gl_bai}"
+    if [ "$actual_qdisc" = "fq" ] && [ "$actual_cc" = "bbr" ] && \
+       [ "$actual_wmem" = "4194304" ] && [ "$actual_rmem" = "4194304" ] && \
+       [ "$actual_tw_reuse" = "0" ]; then
+        echo -e "${gl_lv}✅ BBR v3 中转优化配置完成并已生效！${gl_bai}"
+        echo -e "${gl_zi}配置说明: 4MB 小缓冲区，快速转发模式，适合所有中转场景${gl_bai}"
     else
         echo -e "${gl_huang}⚠️ 配置已保存但部分参数未生效${gl_bai}"
         echo -e "${gl_huang}建议执行以下操作：${gl_bai}"
@@ -1818,8 +2028,8 @@ show_main_menu() {
         echo "2. 卸载 XanMod 内核"
         echo ""
         echo -e "${gl_kjlan}[BBR TCP调优]${gl_bai}"
-        echo "3. 快速启用 BBR + FQ（≤1GB 内存）"
-        echo "4. 快速启用 BBR + FQ（2GB+ 内存）"
+        echo "3. BBR 直连/落地优化（智能带宽检测）"
+        echo "4. BBR 中转优化（固定4MB快速转发）"
         echo ""
         echo -e "${gl_kjlan}[系统设置]${gl_bai}"
         echo "5. 虚拟内存管理"
@@ -1858,8 +2068,8 @@ show_main_menu() {
         echo "1. 安装 XanMod 内核 + BBR v3"
         echo ""
         echo -e "${gl_kjlan}[BBR TCP调优]${gl_bai}"
-        echo "2. 快速启用 BBR + FQ（≤1GB 内存）"
-        echo "3. 快速启用 BBR + FQ（2GB+ 内存）"
+        echo "2. BBR 直连/落地优化（智能带宽检测）"
+        echo "3. BBR 中转优化（固定4MB快速转发）"
         echo ""
         echo -e "${gl_kjlan}[系统设置]${gl_bai}"
         echo "4. 虚拟内存管理"
@@ -1920,22 +2130,22 @@ show_main_menu() {
             if [ $is_installed -eq 0 ]; then
                 uninstall_xanmod
             else
-                bbr_configure "fq" "通用场景优化（≤1GB 内存，16MB 缓冲区）"
+                bbr_configure_direct
                 break_end
             fi
             ;;
         3)
             if [ $is_installed -eq 0 ]; then
-                bbr_configure "fq" "通用场景优化（≤1GB 内存，16MB 缓冲区）"
+                bbr_configure_direct
                 break_end
             else
-                bbr_configure_2gb "fq" "通用场景优化（2GB+ 内存，32MB 缓冲区）"
+                bbr_configure_relay
                 break_end
             fi
             ;;
         4)
             if [ $is_installed -eq 0 ]; then
-                bbr_configure_2gb "fq" "通用场景优化（2GB+ 内存，32MB 缓冲区）"
+                bbr_configure_relay
                 break_end
             else
                 manage_swap
