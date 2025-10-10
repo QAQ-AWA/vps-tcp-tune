@@ -484,13 +484,14 @@ server_reboot() {
 
 # 带宽检测函数
 detect_bandwidth() {
-    echo ""
-    echo -e "${gl_kjlan}=== 服务器带宽检测 ===${gl_bai}"
-    echo ""
-    echo "请选择带宽配置方式："
-    echo "1. 自动检测（运行 speedtest，推荐）"
-    echo "2. 使用通用值（16MB，跳过检测）"
-    echo ""
+    # 所有交互式输出重定向到stderr，避免被命令替换捕获
+    echo "" >&2
+    echo -e "${gl_kjlan}=== 服务器带宽检测 ===${gl_bai}" >&2
+    echo "" >&2
+    echo "请选择带宽配置方式：" >&2
+    echo "1. 自动检测（运行 speedtest，推荐）" >&2
+    echo "2. 使用通用值（16MB，跳过检测）" >&2
+    echo "" >&2
     
     read -e -p "请输入选择 [1]: " bw_choice
     bw_choice=${bw_choice:-1}
@@ -498,14 +499,14 @@ detect_bandwidth() {
     case "$bw_choice" in
         1)
             # 自动检测带宽
-            echo ""
-            echo -e "${gl_huang}正在运行 speedtest 测速...${gl_bai}"
-            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-            echo ""
+            echo "" >&2
+            echo -e "${gl_huang}正在运行 speedtest 测速...${gl_bai}" >&2
+            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" >&2
+            echo "" >&2
             
             # 检查speedtest是否安装
             if ! command -v speedtest &>/dev/null; then
-                echo -e "${gl_huang}speedtest 未安装，正在安装...${gl_bai}"
+                echo -e "${gl_huang}speedtest 未安装，正在安装...${gl_bai}" >&2
                 # 调用脚本中已有的安装逻辑（简化版）
                 local cpu_arch=$(uname -m)
                 local download_url
@@ -517,8 +518,8 @@ detect_bandwidth() {
                         download_url="https://install.speedtest.net/app/cli/ookla-speedtest-1.2.0-linux-aarch64.tgz"
                         ;;
                     *)
-                        echo -e "${gl_hong}错误: 不支持的架构 ${cpu_arch}${gl_bai}"
-                        echo "将使用通用值 16MB"
+                        echo -e "${gl_hong}错误: 不支持的架构 ${cpu_arch}${gl_bai}" >&2
+                        echo "将使用通用值 16MB" >&2
                         echo "500"
                         return 1
                         ;;
@@ -531,7 +532,7 @@ detect_bandwidth() {
                 rm -f speedtest.tgz
                 
                 if [ $? -ne 0 ]; then
-                    echo -e "${gl_hong}安装失败，将使用通用值${gl_bai}"
+                    echo -e "${gl_hong}安装失败，将使用通用值${gl_bai}" >&2
                     echo "500"
                     return 1
                 fi
@@ -539,16 +540,16 @@ detect_bandwidth() {
             
             # 运行speedtest并捕获输出
             local speedtest_output=$(speedtest 2>&1)
-            echo "$speedtest_output"
-            echo ""
-            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-            echo ""
+            echo "$speedtest_output" >&2
+            echo "" >&2
+            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" >&2
+            echo "" >&2
             
             # 提取Upload速度（Mbps）
             local upload_speed=$(echo "$speedtest_output" | grep -i "Upload:" | grep -oP '\d+\.\d+' | head -n1)
             
             if [ -z "$upload_speed" ]; then
-                echo -e "${gl_huang}无法自动检测带宽，将使用通用值 16MB${gl_bai}"
+                echo -e "${gl_huang}无法自动检测带宽，将使用通用值 16MB${gl_bai}" >&2
                 echo "500"
                 return 1
             fi
@@ -556,8 +557,8 @@ detect_bandwidth() {
             # 转为整数
             local upload_mbps=${upload_speed%.*}
             
-            echo -e "${gl_lv}✅ 检测到上传带宽: ${upload_mbps} Mbps${gl_bai}"
-            echo ""
+            echo -e "${gl_lv}✅ 检测到上传带宽: ${upload_mbps} Mbps${gl_bai}" >&2
+            echo "" >&2
             
             # 返回带宽值
             echo "$upload_mbps"
@@ -565,16 +566,16 @@ detect_bandwidth() {
             ;;
         2)
             # 使用通用值
-            echo ""
-            echo -e "${gl_huang}使用通用配置: 16MB 缓冲区${gl_bai}"
-            echo "说明: 适合大多数 500-2000 Mbps 带宽场景"
-            echo ""
+            echo "" >&2
+            echo -e "${gl_huang}使用通用配置: 16MB 缓冲区${gl_bai}" >&2
+            echo "说明: 适合大多数 500-2000 Mbps 带宽场景" >&2
+            echo "" >&2
             # 返回对应1000Mbps的值
             echo "1000"
             return 0
             ;;
         *)
-            echo -e "${gl_huang}无效选择，使用通用值${gl_bai}"
+            echo -e "${gl_huang}无效选择，使用通用值${gl_bai}" >&2
             echo "1000"
             return 1
             ;;
@@ -608,16 +609,16 @@ calculate_buffer_size() {
         bandwidth_level="极高带宽（> 10 Gbps）"
     fi
     
-    # 显示计算结果
-    echo ""
-    echo -e "${gl_kjlan}根据带宽计算最优缓冲区:${gl_bai}"
-    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    echo -e "  检测带宽: ${gl_huang}${bandwidth} Mbps${gl_bai}"
-    echo -e "  带宽等级: ${bandwidth_level}"
-    echo -e "  推荐缓冲区: ${gl_lv}${buffer_mb} MB${gl_bai}"
-    echo -e "  说明: 适合该带宽的最优配置"
-    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    echo ""
+    # 显示计算结果（输出到stderr）
+    echo "" >&2
+    echo -e "${gl_kjlan}根据带宽计算最优缓冲区:${gl_bai}" >&2
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" >&2
+    echo -e "  检测带宽: ${gl_huang}${bandwidth} Mbps${gl_bai}" >&2
+    echo -e "  带宽等级: ${bandwidth_level}" >&2
+    echo -e "  推荐缓冲区: ${gl_lv}${buffer_mb} MB${gl_bai}" >&2
+    echo -e "  说明: 适合该带宽的最优配置" >&2
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" >&2
+    echo "" >&2
     
     # 询问确认
     read -e -p "$(echo -e "${gl_huang}是否使用推荐值 ${buffer_mb}MB？(Y/N) [Y]: ${gl_bai}")" confirm
@@ -630,8 +631,8 @@ calculate_buffer_size() {
             return 0
             ;;
         *)
-            echo ""
-            echo -e "${gl_huang}已取消，将使用通用值 16MB${gl_bai}"
+            echo "" >&2
+            echo -e "${gl_huang}已取消，将使用通用值 16MB${gl_bai}" >&2
             echo "16"
             return 1
             ;;
