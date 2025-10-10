@@ -4,13 +4,14 @@
 一键安装 XanMod 内核，启用 BBR v3 拥塞控制，集成 25+ 实用工具，全面优化你的 VPS 服务器。
 
 > **版本**: 2.3 (Smart Edition)
-> **视频教程**: [B站教程](https://www.bilibili.com/video/BV14K421x7BS)
+> 
+> **快速上手**: [📖 快速使用指南](QUICK_START.md) | **视频教程**: [🎬 B站教程](https://www.bilibili.com/video/BV14K421x7BS)
 
 ---
 
 ## 🚀 一键安装（推荐）
 
-### 远程运行最新版（无需下载）
+### 方式1：远程运行最新版（标准方式）
 
 ```bash
 bash <(wget -qO- https://raw.githubusercontent.com/Eric86777/vps-tcp-tune/main/net-tcp-tune.sh)
@@ -20,6 +21,81 @@ bash <(wget -qO- https://raw.githubusercontent.com/Eric86777/vps-tcp-tune/main/n
 - ✅ 最简洁，只需一行命令
 - ✅ 每次都运行最新版
 - ✅ 不产生本地文件
+
+---
+
+### 方式2：快捷别名（超级推荐）⭐
+
+**嫌命令太长？安装快捷别名，以后只需输入 `bbr` 即可！**
+
+#### 🚀 一键安装别名
+
+```bash
+bash <(wget -qO- https://raw.githubusercontent.com/Eric86777/vps-tcp-tune/main/install-alias.sh)
+```
+
+#### 📝 安装后可用的快捷命令
+
+| 快捷命令 | 说明 | 推荐度 |
+|---------|------|-------|
+| `bbr` | 最短命令 | ⭐⭐⭐⭐⭐ |
+| `tcp-tune` | TCP调优 | ⭐⭐⭐⭐ |
+| `net-tune` | 网络调优 | ⭐⭐⭐⭐ |
+
+#### 💡 使用示例
+
+```bash
+# 第一步：安装别名（只需执行一次）
+bash <(wget -qO- https://raw.githubusercontent.com/Eric86777/vps-tcp-tune/main/install-alias.sh)
+
+# 第二步：重新加载配置
+source ~/.zshrc   # 如果使用 zsh
+source ~/.bashrc  # 如果使用 bash
+
+# 第三步：以后直接使用快捷命令
+bbr               # 一个单词，超简单！🎉
+```
+
+**优点**:
+- ✅ 超级简短：只需输入 `bbr`
+- ✅ 永久有效：配置后永久可用
+- ✅ 智能检测：自动识别你的 Shell（zsh/bash）
+- ✅ 依然最新：每次都运行最新版脚本
+
+---
+
+### 方式3：下载到本地运行
+
+如果你想在本地保存脚本：
+
+```bash
+# 下载脚本
+wget https://raw.githubusercontent.com/Eric86777/vps-tcp-tune/main/net-tcp-tune.sh
+
+# 添加执行权限
+chmod +x net-tcp-tune.sh
+
+# 运行脚本
+./net-tcp-tune.sh
+```
+
+或者使用快速启动脚本：
+
+```bash
+# 下载快速启动脚本
+wget https://raw.githubusercontent.com/Eric86777/vps-tcp-tune/main/bbr.sh
+
+# 添加执行权限
+chmod +x bbr.sh
+
+# 以后直接运行（会自动下载并运行最新版）
+./bbr.sh
+```
+
+**优点**:
+- ✅ 本地保存，随时可用
+- ✅ 可以离线查看脚本内容
+- ✅ 使用 `bbr.sh` 依然能运行最新版
 
 ---
 
@@ -646,6 +722,13 @@ MIT
     3. 创建配置文件
     4. 应用所有优化参数
     5. 验证配置
+
+- ✅ **快捷方式系统**
+  - 新增 `install-alias.sh` - 一键安装快捷别名
+  - 新增 `bbr.sh` - 本地快速启动脚本
+  - 支持3种快捷命令：`bbr`、`tcp-tune`、`net-tune`
+  - 智能识别用户Shell（zsh/bash）
+  - 永久有效，配置一次永久使用
 
 ### v2.2 (2025-01-10)
 - ✅ **BBR TCP调优增强版**
