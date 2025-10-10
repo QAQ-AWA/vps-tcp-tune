@@ -1262,45 +1262,49 @@ show_main_menu() {
     echo -e "${gl_zi}╚════════════════════════════════════════════╝${gl_bai}"
     echo ""
     echo -e "${gl_kjlan}[内核管理]${gl_bai}"
-    
+
     if [ $is_installed -eq 0 ]; then
         echo "1. 更新 XanMod 内核"
         echo "2. 卸载 XanMod 内核"
     else
         echo "1. 安装 XanMod 内核 + BBR v3"
     fi
-    
+
     echo ""
-    echo -e "${gl_kjlan}[BBR 配置]${gl_bai}"
-    echo "3. 快速启用 BBR + FQ（≤1GB 内存）"
-    echo "4. 快速启用 BBR + FQ（2GB+ 内存）"
+    echo -e "${gl_kjlan}[BBR TCP调优]${gl_bai}"
+    echo "2. 快速启用 BBR + FQ（≤1GB 内存）"
+    echo "3. 快速启用 BBR + FQ（2GB+ 内存）"
     echo ""
-    echo -e "${gl_kjlan}[系统工具]${gl_bai}"
-    echo "5. 虚拟内存管理"
-    echo "6. 设置IPv4优先"
-    echo "7. 设置IPv6优先"
+    echo -e "${gl_kjlan}[系统设置]${gl_bai}"
+    echo "4. 虚拟内存管理"
+    echo "5. 设置IPv4优先"
+    echo "6. 设置IPv6优先"
     echo ""
     echo -e "${gl_kjlan}[Xray配置]${gl_bai}"
-    echo "8. 查看Xray配置"
-    echo "9. 设置Xray IPv6出站"
-    echo "10. 恢复Xray默认配置"
+    echo "7. 查看Xray配置"
+    echo "8. 设置Xray IPv6出站"
+    echo "9. 恢复Xray默认配置"
     echo ""
     echo -e "${gl_kjlan}[系统信息]${gl_bai}"
-    echo "11. 查看详细状态"
+    echo "10. 查看详细状态"
+    echo ""
+    echo -e "${gl_kjlan}[服务器检测合集]${gl_bai}"
+    echo "11. NS一键检测脚本"
     echo "12. 服务器带宽测试"
     echo "13. 三网回程路由测试"
-    echo "14. NS一键检测脚本"
-    echo "15. IP质量检测"
-    echo "16. IP质量检测-仅IPv4"
-    echo "17. 网络延迟质量检测"
-    echo "18. 国际互联速度测试"
-    echo "19. IP媒体/AI解锁检测"
-    echo "20. PF_realm转发脚本"
-    echo "21. 酷雪云脚本"
-    echo "22. 御坂美琴一键双协议"
-    echo "23. NS论坛的cake调优"
-    echo "24. 科技lion脚本"
-    echo "25. F佬一键sing box脚本"
+    echo "14. IP质量检测"
+    echo "15. IP质量检测-仅IPv4"
+    echo "16. 网络延迟质量检测"
+    echo "17. 国际互联速度测试"
+    echo "18. IP媒体/AI解锁检测"
+    echo ""
+    echo -e "${gl_kjlan}[脚本合集]${gl_bai}"
+    echo "19. PF_realm转发脚本"
+    echo "20. 御坂美琴一键双协议"
+    echo "21. NS论坛的cake调优"
+    echo "22. 酷雪云脚本"
+    echo "23. 科技lion脚本"
+    echo "24. F佬一键sing box脚本"
     echo ""
     echo "0. 退出脚本"
     echo "------------------------------------------------"
@@ -1324,36 +1328,38 @@ show_main_menu() {
         2)
             if [ $is_installed -eq 0 ]; then
                 uninstall_xanmod
+            else
+                bbr_configure "fq" "通用场景优化（≤1GB 内存，16MB 缓冲区）"
+                break_end
             fi
             ;;
         3)
-            bbr_configure "fq" "通用场景优化（≤1GB 内存，16MB 缓冲区）"
-            break_end
-            ;;
-        4)
             bbr_configure_2gb "fq" "通用场景优化（2GB+ 内存，32MB 缓冲区）"
             break_end
             ;;
-        5)
+        4)
             manage_swap
             ;;
-        6)
+        5)
             set_ipv4_priority
             ;;
-        7)
+        6)
             set_ipv6_priority
             ;;
-        8)
+        7)
             show_xray_config
             ;;
-        9)
+        8)
             set_xray_ipv6_outbound
             ;;
-        10)
+        9)
             restore_xray_default
             ;;
-        11)
+        10)
             show_detailed_status
+            ;;
+        11)
+            run_ns_detect
             ;;
         12)
             run_speedtest
@@ -1362,39 +1368,36 @@ show_main_menu() {
             run_backtrace
             ;;
         14)
-            run_ns_detect
-            ;;
-        15)
             run_ip_quality_check
             ;;
-        16)
+        15)
             run_ip_quality_check_ipv4
             ;;
-        17)
+        16)
             run_network_latency_check
             ;;
-        18)
+        17)
             run_international_speed_test
             ;;
-        19)
+        18)
             run_unlock_check
             ;;
-        20)
+        19)
             run_pf_realm
             ;;
-        21)
-            run_kxy_script
-            ;;
-        22)
+        20)
             run_misaka_xray
             ;;
-        23)
+        21)
             run_ns_cake
             ;;
-        24)
+        22)
+            run_kxy_script
+            ;;
+        23)
             run_kejilion_script
             ;;
-        25)
+        24)
             run_fscarmen_singbox
             ;;
         0)
