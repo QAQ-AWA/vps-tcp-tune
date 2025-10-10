@@ -479,6 +479,100 @@ server_reboot() {
 }
 
 #=============================================================================
+# SWAP智能检测和建议函数（集成到选项2/3）
+#=============================================================================
+check_and_suggest_swap() {
+    local mem_total=$(free -m | awk 'NR==2{print $2}')
+    local swap_total=$(free -m | awk 'NR==3{print $2}')
+    local recommended_swap
+    local need_swap=0
+    
+    # 判断是否需要SWAP
+    if [ "$mem_total" -lt 2048 ]; then
+        # 小于2GB内存，强烈建议配置SWAP
+        need_swap=1
+    elif [ "$mem_total" -lt 4096 ] && [ "$swap_total" -eq 0 ]; then
+        # 2-4GB内存且没有SWAP，建议配置
+        need_swap=1
+    fi
+    
+    # 如果不需要SWAP，直接返回
+    if [ "$need_swap" -eq 0 ]; then
+        return 0
+    fi
+    
+    # 计算推荐的SWAP大小
+    if [ "$mem_total" -lt 512 ]; then
+        recommended_swap=1024
+    elif [ "$mem_total" -lt 1024 ]; then
+        recommended_swap=$((mem_total * 2))
+    elif [ "$mem_total" -lt 2048 ]; then
+        recommended_swap=$((mem_total * 3 / 2))
+    elif [ "$mem_total" -lt 4096 ]; then
+        recommended_swap=$mem_total
+    else
+        recommended_swap=4096
+    fi
+    
+    # 显示建议信息
+    echo ""
+    echo -e "${gl_kjlan}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${gl_bai}"
+    echo -e "${gl_huang}检测到虚拟内存（SWAP）需要优化${gl_bai}"
+    echo -e "${gl_kjlan}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${gl_bai}"
+    echo ""
+    echo -e "  物理内存:       ${gl_huang}${mem_total}MB${gl_bai}"
+    echo -e "  当前 SWAP:      ${gl_huang}${swap_total}MB${gl_bai}"
+    echo -e "  推荐 SWAP:      ${gl_lv}${recommended_swap}MB${gl_bai}"
+    echo ""
+    
+    if [ "$mem_total" -lt 1024 ]; then
+        echo -e "${gl_zi}原因: 小内存机器（<1GB）强烈建议配置SWAP，避免内存不足导致程序崩溃${gl_bai}"
+    elif [ "$mem_total" -lt 2048 ]; then
+        echo -e "${gl_zi}原因: 1-2GB内存建议配置SWAP，提供缓冲空间${gl_bai}"
+    elif [ "$mem_total" -lt 4096 ]; then
+        echo -e "${gl_zi}原因: 2-4GB内存建议配置少量SWAP作为保险${gl_bai}"
+    fi
+    
+    echo ""
+    echo -e "${gl_kjlan}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${gl_bai}"
+    echo ""
+    
+    # 询问用户
+    read -e -p "$(echo -e "${gl_huang}是否现在配置虚拟内存？(Y/N): ${gl_bai}")" confirm
+    
+    case "$confirm" in
+        [Yy])
+            echo ""
+            echo -e "${gl_lv}开始配置虚拟内存...${gl_bai}"
+            echo ""
+            add_swap "$recommended_swap"
+            echo ""
+            echo -e "${gl_lv}✅ 虚拟内存配置完成！${gl_bai}"
+            echo ""
+            echo -e "${gl_zi}继续执行 BBR 优化配置...${gl_bai}"
+            sleep 2
+            return 0
+            ;;
+        [Nn])
+            echo ""
+            echo -e "${gl_huang}已跳过虚拟内存配置${gl_bai}"
+            echo -e "${gl_zi}继续执行 BBR 优化配置...${gl_bai}"
+            echo ""
+            sleep 2
+            return 1
+            ;;
+        *)
+            echo ""
+            echo -e "${gl_huang}输入无效，已跳过虚拟内存配置${gl_bai}"
+            echo -e "${gl_zi}继续执行 BBR 优化配置...${gl_bai}"
+            echo ""
+            sleep 2
+            return 1
+            ;;
+    esac
+}
+
+#=============================================================================
 # 配置冲突检测与清理（避免被其他 sysctl 覆盖）
 #=============================================================================
 check_and_clean_conflicts() {
@@ -590,9 +684,15 @@ bbr_configure() {
     local qdisc=$1
     local description=$2
     
-    echo -e "${gl_kjlan}=== 配置 BBR v3 + ${qdisc} ===${gl_bai}"
+    echo -e "${gl_kjlan}=== 配置 BBR v3 + ${qdisc} (≤1GB 内存增强版) ===${gl_bai}"
+    echo ""
     
-    # 步骤 1：清理冲突配置
+    # 步骤 0：SWAP智能检测和建议
+    echo -e "${gl_zi}[步骤 1/5] 检测虚拟内存（SWAP）配置...${gl_bai}"
+    check_and_suggest_swap
+    
+    echo ""
+    echo -e "${gl_zi}[步骤 2/5] 清理配置冲突...${gl_bai}"
     echo "正在检查配置冲突..."
     
     # 1.1 备份主配置文件（如果还没备份）
@@ -620,9 +720,11 @@ bbr_configure() {
     check_and_clean_conflicts
 
     # 步骤 2：创建独立配置文件
+    echo ""
+    echo -e "${gl_zi}[步骤 3/5] 创建配置文件...${gl_bai}"
     echo "正在创建新配置..."
     cat > "$SYSCTL_CONF" << EOF
-# BBR v3 Ultimate Configuration
+# BBR v3 Ultimate Configuration (Enhanced Edition)
 # Generated on $(date)
 
 # 队列调度算法
@@ -636,9 +738,34 @@ net.core.rmem_max=16777216
 net.core.wmem_max=16777216
 net.ipv4.tcp_rmem=4096 87380 16777216
 net.ipv4.tcp_wmem=4096 65536 16777216
+
+# ===== 精华参数优化（1GB内存版）=====
+
+# TIME_WAIT 重用（高并发必备）
+net.ipv4.tcp_tw_reuse=1
+
+# 端口范围扩大（代理/转发必备）
+net.ipv4.ip_local_port_range=1024 65535
+
+# 连接队列增大（Web服务器必备）
+net.core.somaxconn=4096
+
+# 虚拟内存优化（1GB内存优化）
+vm.swappiness=20
+vm.dirty_ratio=20
+vm.dirty_background_ratio=5
+vm.overcommit_memory=1
+vm.min_free_kbytes=32768
+vm.vfs_cache_pressure=50
+
+# CPU调度优化
+kernel.sched_autogroup_enabled=0
+kernel.numa_balancing=0
 EOF
 
     # 步骤 3：应用配置（只加载此配置文件）
+    echo ""
+    echo -e "${gl_zi}[步骤 4/5] 应用所有优化参数...${gl_bai}"
     echo "正在应用配置..."
     sysctl -p "$SYSCTL_CONF" > /dev/null 2>&1
     
@@ -646,8 +773,27 @@ EOF
     echo "正在应用队列与防分片（无需重启）..."
     apply_tc_fq_now >/dev/null 2>&1
     apply_mss_clamp enable >/dev/null 2>&1
+    
+    # 步骤 3.6：配置文件描述符限制
+    echo "正在优化文件描述符限制..."
+    if ! grep -q "BBR Ultimate - 文件描述符优化" /etc/security/limits.conf 2>/dev/null; then
+        cat >> /etc/security/limits.conf << 'LIMITSEOF'
+# BBR Ultimate - 文件描述符优化
+* soft nofile 65535
+* hard nofile 65535
+LIMITSEOF
+    fi
+    ulimit -n 65535 2>/dev/null
+    
+    # 步骤 3.7：禁用透明大页面
+    if [ -f /sys/kernel/mm/transparent_hugepage/enabled ]; then
+        echo never > /sys/kernel/mm/transparent_hugepage/enabled 2>/dev/null
+    fi
 
     # 步骤 4：验证配置是否真正生效
+    echo ""
+    echo -e "${gl_zi}[步骤 5/5] 验证配置...${gl_bai}"
+    
     local actual_qdisc=$(sysctl -n net.core.default_qdisc 2>/dev/null)
     local actual_cc=$(sysctl -n net.ipv4.tcp_congestion_control 2>/dev/null)
     local actual_wmem=$(sysctl -n net.ipv4.tcp_wmem 2>/dev/null | awk '{print $3}')
@@ -703,9 +849,15 @@ bbr_configure_2gb() {
     local qdisc=$1
     local description=$2
     
-    echo -e "${gl_kjlan}=== 配置 BBR v3 + ${qdisc} (2GB+ 内存优化) ===${gl_bai}"
+    echo -e "${gl_kjlan}=== 配置 BBR v3 + ${qdisc} (2GB+ 内存增强版) ===${gl_bai}"
+    echo ""
     
-    # 步骤 1：清理冲突配置
+    # 步骤 0：SWAP智能检测和建议
+    echo -e "${gl_zi}[步骤 1/5] 检测虚拟内存（SWAP）配置...${gl_bai}"
+    check_and_suggest_swap
+    
+    echo ""
+    echo -e "${gl_zi}[步骤 2/5] 清理配置冲突...${gl_bai}"
     echo "正在检查配置冲突..."
     
     # 1.1 备份主配置文件（如果还没备份）
@@ -733,9 +885,11 @@ bbr_configure_2gb() {
     check_and_clean_conflicts
 
     # 步骤 2：创建独立配置文件（2GB 内存版本）
+    echo ""
+    echo -e "${gl_zi}[步骤 3/5] 创建配置文件...${gl_bai}"
     echo "正在创建新配置..."
     cat > "$SYSCTL_CONF" << EOF
-# BBR v3 Ultimate Configuration (2GB+ Memory)
+# BBR v3 Ultimate Configuration (2GB+ Memory - Enhanced Edition)
 # Generated on $(date)
 
 # 队列调度算法
@@ -755,9 +909,34 @@ net.ipv4.tcp_slow_start_after_idle=0
 net.ipv4.tcp_mtu_probing=1
 net.core.netdev_max_backlog=16384
 net.ipv4.tcp_max_syn_backlog=8192
+
+# ===== 精华参数优化（完整版）=====
+
+# TIME_WAIT 重用（高并发必备）
+net.ipv4.tcp_tw_reuse=1
+
+# 端口范围扩大（代理/转发必备）
+net.ipv4.ip_local_port_range=1024 65535
+
+# 连接队列增大（Web服务器必备）
+net.core.somaxconn=4096
+
+# 虚拟内存优化（2GB+完整版）
+vm.swappiness=10
+vm.dirty_ratio=15
+vm.dirty_background_ratio=5
+vm.overcommit_memory=1
+vm.min_free_kbytes=65536
+vm.vfs_cache_pressure=50
+
+# CPU调度优化
+kernel.sched_autogroup_enabled=0
+kernel.numa_balancing=0
 EOF
 
     # 步骤 3：应用配置（只加载此配置文件）
+    echo ""
+    echo -e "${gl_zi}[步骤 4/5] 应用所有优化参数...${gl_bai}"
     echo "正在应用配置..."
     sysctl -p "$SYSCTL_CONF" > /dev/null 2>&1
     
@@ -765,8 +944,27 @@ EOF
     echo "正在应用队列与防分片（无需重启）..."
     apply_tc_fq_now >/dev/null 2>&1
     apply_mss_clamp enable >/dev/null 2>&1
+    
+    # 步骤 3.6：配置文件描述符限制
+    echo "正在优化文件描述符限制..."
+    if ! grep -q "BBR Ultimate - 文件描述符优化" /etc/security/limits.conf 2>/dev/null; then
+        cat >> /etc/security/limits.conf << 'LIMITSEOF'
+# BBR Ultimate - 文件描述符优化
+* soft nofile 65535
+* hard nofile 65535
+LIMITSEOF
+    fi
+    ulimit -n 65535 2>/dev/null
+    
+    # 步骤 3.7：禁用透明大页面
+    if [ -f /sys/kernel/mm/transparent_hugepage/enabled ]; then
+        echo never > /sys/kernel/mm/transparent_hugepage/enabled 2>/dev/null
+    fi
 
     # 步骤 4：验证配置是否真正生效
+    echo ""
+    echo -e "${gl_zi}[步骤 5/5] 验证配置...${gl_bai}"
+    
     local actual_qdisc=$(sysctl -n net.core.default_qdisc 2>/dev/null)
     local actual_cc=$(sysctl -n net.ipv4.tcp_congestion_control 2>/dev/null)
     local actual_wmem=$(sysctl -n net.ipv4.tcp_wmem 2>/dev/null | awk '{print $3}')
@@ -1618,48 +1816,86 @@ show_main_menu() {
     if [ $is_installed -eq 0 ]; then
         echo "1. 更新 XanMod 内核"
         echo "2. 卸载 XanMod 内核"
+        echo ""
+        echo -e "${gl_kjlan}[BBR TCP调优]${gl_bai}"
+        echo "3. 快速启用 BBR + FQ（≤1GB 内存）"
+        echo "4. 快速启用 BBR + FQ（2GB+ 内存）"
+        echo ""
+        echo -e "${gl_kjlan}[系统设置]${gl_bai}"
+        echo "5. 虚拟内存管理"
+        echo "6. 设置IPv4优先"
+        echo "7. 设置IPv6优先"
+        echo ""
+        echo -e "${gl_kjlan}[Xray配置]${gl_bai}"
+        echo "8. 查看Xray配置"
+        echo "9. 设置Xray IPv6出站"
+        echo "10. 恢复Xray默认配置"
+        echo ""
+        echo -e "${gl_kjlan}[系统信息]${gl_bai}"
+        echo "11. 查看详细状态"
+        echo ""
+        echo -e "${gl_kjlan}[服务器检测合集]${gl_bai}"
+        echo "12. NS一键检测脚本"
+        echo "13. 服务器带宽测试"
+        echo "14. 三网回程路由测试"
+        echo "15. IP质量检测"
+        echo "16. IP质量检测-仅IPv4"
+        echo "17. 网络延迟质量检测"
+        echo "18. 国际互联速度测试"
+        echo "19. IP媒体/AI解锁检测"
+        echo ""
+        echo -e "${gl_kjlan}[脚本合集]${gl_bai}"
+        echo "20. PF_realm转发脚本"
+        echo "21. 御坂美琴一键双协议"
+        echo "22. NS论坛的cake调优"
+        echo "23. 酷雪云脚本"
+        echo "24. 科技lion脚本"
+        echo "25. F佬一键sing box脚本"
+        echo ""
+        echo -e "${gl_kjlan}[系统优化]${gl_bai}"
+        echo "26. Linux系统内核参数优化"
     else
         echo "1. 安装 XanMod 内核 + BBR v3"
+        echo ""
+        echo -e "${gl_kjlan}[BBR TCP调优]${gl_bai}"
+        echo "2. 快速启用 BBR + FQ（≤1GB 内存）"
+        echo "3. 快速启用 BBR + FQ（2GB+ 内存）"
+        echo ""
+        echo -e "${gl_kjlan}[系统设置]${gl_bai}"
+        echo "4. 虚拟内存管理"
+        echo "5. 设置IPv4优先"
+        echo "6. 设置IPv6优先"
+        echo ""
+        echo -e "${gl_kjlan}[Xray配置]${gl_bai}"
+        echo "7. 查看Xray配置"
+        echo "8. 设置Xray IPv6出站"
+        echo "9. 恢复Xray默认配置"
+        echo ""
+        echo -e "${gl_kjlan}[系统信息]${gl_bai}"
+        echo "10. 查看详细状态"
+        echo ""
+        echo -e "${gl_kjlan}[服务器检测合集]${gl_bai}"
+        echo "11. NS一键检测脚本"
+        echo "12. 服务器带宽测试"
+        echo "13. 三网回程路由测试"
+        echo "14. IP质量检测"
+        echo "15. IP质量检测-仅IPv4"
+        echo "16. 网络延迟质量检测"
+        echo "17. 国际互联速度测试"
+        echo "18. IP媒体/AI解锁检测"
+        echo ""
+        echo -e "${gl_kjlan}[脚本合集]${gl_bai}"
+        echo "19. PF_realm转发脚本"
+        echo "20. 御坂美琴一键双协议"
+        echo "21. NS论坛的cake调优"
+        echo "22. 酷雪云脚本"
+        echo "23. 科技lion脚本"
+        echo "24. F佬一键sing box脚本"
+        echo ""
+        echo -e "${gl_kjlan}[系统优化]${gl_bai}"
+        echo "25. Linux系统内核参数优化"
     fi
-
-    echo ""
-    echo -e "${gl_kjlan}[BBR TCP调优]${gl_bai}"
-    echo "2. 快速启用 BBR + FQ（≤1GB 内存）"
-    echo "3. 快速启用 BBR + FQ（2GB+ 内存）"
-    echo ""
-    echo -e "${gl_kjlan}[系统设置]${gl_bai}"
-    echo "4. 虚拟内存管理"
-    echo "5. 设置IPv4优先"
-    echo "6. 设置IPv6优先"
-    echo ""
-    echo -e "${gl_kjlan}[Xray配置]${gl_bai}"
-    echo "7. 查看Xray配置"
-    echo "8. 设置Xray IPv6出站"
-    echo "9. 恢复Xray默认配置"
-    echo ""
-    echo -e "${gl_kjlan}[系统信息]${gl_bai}"
-    echo "10. 查看详细状态"
-    echo ""
-    echo -e "${gl_kjlan}[服务器检测合集]${gl_bai}"
-    echo "11. NS一键检测脚本"
-    echo "12. 服务器带宽测试"
-    echo "13. 三网回程路由测试"
-    echo "14. IP质量检测"
-    echo "15. IP质量检测-仅IPv4"
-    echo "16. 网络延迟质量检测"
-    echo "17. 国际互联速度测试"
-    echo "18. IP媒体/AI解锁检测"
-    echo ""
-    echo -e "${gl_kjlan}[脚本合集]${gl_bai}"
-    echo "19. PF_realm转发脚本"
-    echo "20. 御坂美琴一键双协议"
-    echo "21. NS论坛的cake调优"
-    echo "22. 酷雪云脚本"
-    echo "23. 科技lion脚本"
-    echo "24. F佬一键sing box脚本"
-    echo ""
-    echo -e "${gl_kjlan}[系统优化]${gl_bai}"
-    echo "25. Linux系统内核参数优化"
+    
     echo ""
     echo "0. 退出脚本"
     echo "------------------------------------------------"
@@ -1689,74 +1925,176 @@ show_main_menu() {
             fi
             ;;
         3)
-            bbr_configure_2gb "fq" "通用场景优化（2GB+ 内存，32MB 缓冲区）"
-            break_end
+            if [ $is_installed -eq 0 ]; then
+                bbr_configure "fq" "通用场景优化（≤1GB 内存，16MB 缓冲区）"
+                break_end
+            else
+                bbr_configure_2gb "fq" "通用场景优化（2GB+ 内存，32MB 缓冲区）"
+                break_end
+            fi
             ;;
         4)
-            manage_swap
+            if [ $is_installed -eq 0 ]; then
+                bbr_configure_2gb "fq" "通用场景优化（2GB+ 内存，32MB 缓冲区）"
+                break_end
+            else
+                manage_swap
+            fi
             ;;
         5)
-            set_ipv4_priority
+            if [ $is_installed -eq 0 ]; then
+                manage_swap
+            else
+                set_ipv4_priority
+            fi
             ;;
         6)
-            set_ipv6_priority
+            if [ $is_installed -eq 0 ]; then
+                set_ipv4_priority
+            else
+                set_ipv6_priority
+            fi
             ;;
         7)
-            show_xray_config
+            if [ $is_installed -eq 0 ]; then
+                set_ipv6_priority
+            else
+                show_xray_config
+            fi
             ;;
         8)
-            set_xray_ipv6_outbound
+            if [ $is_installed -eq 0 ]; then
+                show_xray_config
+            else
+                set_xray_ipv6_outbound
+            fi
             ;;
         9)
-            restore_xray_default
+            if [ $is_installed -eq 0 ]; then
+                set_xray_ipv6_outbound
+            else
+                restore_xray_default
+            fi
             ;;
         10)
-            show_detailed_status
+            if [ $is_installed -eq 0 ]; then
+                restore_xray_default
+            else
+                show_detailed_status
+            fi
             ;;
         11)
-            run_ns_detect
+            if [ $is_installed -eq 0 ]; then
+                show_detailed_status
+            else
+                run_ns_detect
+            fi
             ;;
         12)
-            run_speedtest
+            if [ $is_installed -eq 0 ]; then
+                run_ns_detect
+            else
+                run_speedtest
+            fi
             ;;
         13)
-            run_backtrace
+            if [ $is_installed -eq 0 ]; then
+                run_speedtest
+            else
+                run_backtrace
+            fi
             ;;
         14)
-            run_ip_quality_check
+            if [ $is_installed -eq 0 ]; then
+                run_backtrace
+            else
+                run_ip_quality_check
+            fi
             ;;
         15)
-            run_ip_quality_check_ipv4
+            if [ $is_installed -eq 0 ]; then
+                run_ip_quality_check
+            else
+                run_ip_quality_check_ipv4
+            fi
             ;;
         16)
-            run_network_latency_check
+            if [ $is_installed -eq 0 ]; then
+                run_ip_quality_check_ipv4
+            else
+                run_network_latency_check
+            fi
             ;;
         17)
-            run_international_speed_test
+            if [ $is_installed -eq 0 ]; then
+                run_network_latency_check
+            else
+                run_international_speed_test
+            fi
             ;;
         18)
-            run_unlock_check
+            if [ $is_installed -eq 0 ]; then
+                run_international_speed_test
+            else
+                run_unlock_check
+            fi
             ;;
         19)
-            run_pf_realm
+            if [ $is_installed -eq 0 ]; then
+                run_unlock_check
+            else
+                run_pf_realm
+            fi
             ;;
         20)
-            run_misaka_xray
+            if [ $is_installed -eq 0 ]; then
+                run_pf_realm
+            else
+                run_misaka_xray
+            fi
             ;;
         21)
-            run_ns_cake
+            if [ $is_installed -eq 0 ]; then
+                run_misaka_xray
+            else
+                run_ns_cake
+            fi
             ;;
         22)
-            run_kxy_script
+            if [ $is_installed -eq 0 ]; then
+                run_ns_cake
+            else
+                run_kxy_script
+            fi
             ;;
         23)
-            run_kejilion_script
+            if [ $is_installed -eq 0 ]; then
+                run_kxy_script
+            else
+                run_kejilion_script
+            fi
             ;;
         24)
-            run_fscarmen_singbox
+            if [ $is_installed -eq 0 ]; then
+                run_kejilion_script
+            else
+                run_fscarmen_singbox
+            fi
             ;;
         25)
-            Kernel_optimize
+            if [ $is_installed -eq 0 ]; then
+                run_fscarmen_singbox
+            else
+                Kernel_optimize
+            fi
+            ;;
+        26)
+            if [ $is_installed -eq 0 ]; then
+                Kernel_optimize
+            else
+                echo "无效选择"
+                sleep 2
+            fi
             ;;
         0)
             echo "退出脚本"
