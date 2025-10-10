@@ -266,6 +266,205 @@ manage_swap() {
     done
 }
 
+set_ipv4_priority() {
+    clear
+    echo -e "${gl_kjlan}=== 设置IPv4优先 ===${gl_bai}"
+    echo ""
+
+    # 检查 gai.conf 是否存在
+    if [ ! -f /etc/gai.conf ]; then
+        echo -e "${gl_huang}警告: /etc/gai.conf 文件不存在${gl_bai}"
+        echo "正在创建配置文件..."
+        touch /etc/gai.conf
+    fi
+
+    echo "正在设置 IPv4 优先..."
+
+    # 启用 IPv4 优先配置
+    sed -i 's/#precedence ::ffff:0:0\/96  100/precedence ::ffff:0:0\/96  100/' /etc/gai.conf
+
+    echo -e "${gl_lv}✅ IPv4 优先已设置${gl_bai}"
+    echo ""
+    echo "当前出口 IP 地址："
+    echo "------------------------------------------------"
+    curl ip.sb
+    echo ""
+    echo "------------------------------------------------"
+
+    break_end
+}
+
+set_ipv6_priority() {
+    clear
+    echo -e "${gl_kjlan}=== 设置IPv6优先 ===${gl_bai}"
+    echo ""
+
+    # 检查 gai.conf 是否存在
+    if [ ! -f /etc/gai.conf ]; then
+        echo -e "${gl_huang}警告: /etc/gai.conf 文件不存在${gl_bai}"
+        echo "正在创建配置文件..."
+        touch /etc/gai.conf
+    fi
+
+    echo "正在设置 IPv6 优先..."
+
+    # 禁用 IPv4 优先配置（即设置 IPv6 优先）
+    sed -i 's/precedence ::ffff:0:0\/96  100/#precedence ::ffff:0:0\/96  100/' /etc/gai.conf
+
+    echo -e "${gl_lv}✅ IPv6 优先已设置${gl_bai}"
+    echo ""
+    echo "当前出口 IP 地址："
+    echo "------------------------------------------------"
+    curl ip.sb
+    echo ""
+    echo "------------------------------------------------"
+
+    break_end
+}
+
+show_xray_config() {
+    clear
+    echo -e "${gl_kjlan}=== 查看 Xray 配置 ===${gl_bai}"
+    echo ""
+
+    if [ ! -f /usr/local/etc/xray/config.json ]; then
+        echo -e "${gl_hong}错误: Xray 配置文件不存在${gl_bai}"
+        echo "路径: /usr/local/etc/xray/config.json"
+        echo ""
+        break_end
+        return 1
+    fi
+
+    echo "Xray 配置文件内容："
+    echo "------------------------------------------------"
+    cat /usr/local/etc/xray/config.json
+    echo ""
+    echo "------------------------------------------------"
+
+    break_end
+}
+
+set_xray_ipv6_outbound() {
+    clear
+    echo -e "${gl_kjlan}=== 设置 Xray IPv6 出站 ===${gl_bai}"
+    echo ""
+
+    # 检查配置文件是否存在
+    if [ ! -f /usr/local/etc/xray/config.json ]; then
+        echo -e "${gl_hong}错误: Xray 配置文件不存在${gl_bai}"
+        echo "路径: /usr/local/etc/xray/config.json"
+        echo ""
+        break_end
+        return 1
+    fi
+
+    # 检查 jq 是否安装
+    if ! command -v jq &>/dev/null; then
+        echo -e "${gl_huang}jq 未安装，正在安装...${gl_bai}"
+        install_package jq
+    fi
+
+    # 检查 xray 命令是否存在
+    if ! command -v xray &>/dev/null; then
+        echo -e "${gl_hong}错误: xray 命令不存在${gl_bai}"
+        echo ""
+        break_end
+        return 1
+    fi
+
+    echo "正在备份当前配置..."
+    cp /usr/local/etc/xray/config.json /usr/local/etc/xray/config.json.bak.$(date +%F-%H%M)
+    echo -e "${gl_lv}✅ 配置已备份${gl_bai}"
+    echo ""
+
+    echo "正在修改为 IPv6 出站配置..."
+    jq '
+      .outbounds = [
+        {
+          "protocol": "freedom",
+          "settings": { "domainStrategy": "UseIPv4v6" },
+          "sendThrough": "::"
+        }
+      ]
+    ' /usr/local/etc/xray/config.json > /usr/local/etc/xray/config.json.new && \
+    mv /usr/local/etc/xray/config.json.new /usr/local/etc/xray/config.json
+
+    echo "正在测试配置..."
+    if xray -test -config /usr/local/etc/xray/config.json; then
+        echo -e "${gl_lv}✅ 配置测试通过${gl_bai}"
+        echo ""
+        echo "正在重启 Xray 服务..."
+        systemctl restart xray
+        echo -e "${gl_lv}✅ Xray IPv6 出站配置完成！${gl_bai}"
+    else
+        echo -e "${gl_hong}❌ 配置测试失败，已回滚${gl_bai}"
+        mv /usr/local/etc/xray/config.json.bak.$(date +%F-%H%M) /usr/local/etc/xray/config.json
+    fi
+
+    echo ""
+    break_end
+}
+
+restore_xray_default() {
+    clear
+    echo -e "${gl_kjlan}=== 恢复 Xray 默认配置 ===${gl_bai}"
+    echo ""
+
+    # 检查配置文件是否存在
+    if [ ! -f /usr/local/etc/xray/config.json ]; then
+        echo -e "${gl_hong}错误: Xray 配置文件不存在${gl_bai}"
+        echo "路径: /usr/local/etc/xray/config.json"
+        echo ""
+        break_end
+        return 1
+    fi
+
+    # 检查 jq 是否安装
+    if ! command -v jq &>/dev/null; then
+        echo -e "${gl_huang}jq 未安装，正在安装...${gl_bai}"
+        install_package jq
+    fi
+
+    # 检查 xray 命令是否存在
+    if ! command -v xray &>/dev/null; then
+        echo -e "${gl_hong}错误: xray 命令不存在${gl_bai}"
+        echo ""
+        break_end
+        return 1
+    fi
+
+    echo "正在备份当前配置..."
+    cp /usr/local/etc/xray/config.json /usr/local/etc/xray/config.json.bak.$(date +%F-%H%M)
+    echo -e "${gl_lv}✅ 配置已备份${gl_bai}"
+    echo ""
+
+    echo "正在恢复双栈模式..."
+    jq '
+      .outbounds = [
+        {
+          "protocol": "freedom",
+          "settings": { "domainStrategy": "UseIPv4v6" }
+        }
+      ]
+    ' /usr/local/etc/xray/config.json > /usr/local/etc/xray/config.json.new && \
+    mv /usr/local/etc/xray/config.json.new /usr/local/etc/xray/config.json
+
+    echo "正在测试配置..."
+    if xray -test -config /usr/local/etc/xray/config.json; then
+        echo -e "${gl_lv}✅ 配置测试通过${gl_bai}"
+        echo ""
+        echo "正在重启 Xray 服务..."
+        systemctl restart xray
+        echo -e "${gl_lv}✅ Xray 默认配置已恢复！${gl_bai}"
+    else
+        echo -e "${gl_hong}❌ 配置测试失败，已回滚${gl_bai}"
+        mv /usr/local/etc/xray/config.json.bak.$(date +%F-%H%M) /usr/local/etc/xray/config.json
+    fi
+
+    echo ""
+    break_end
+}
+
 server_reboot() {
     read -e -p "$(echo -e "${gl_huang}提示: ${gl_bai}现在重启服务器使配置生效吗？(Y/N): ")" rboot
     case "$rboot" in
@@ -845,10 +1044,21 @@ show_main_menu() {
     echo ""
     echo -e "${gl_kjlan}[系统工具]${gl_bai}"
     echo "5. 虚拟内存管理"
+    echo "6. 设置IPv4优先"
+    echo "7. 设置IPv6优先"
+    echo ""
+    echo -e "${gl_kjlan}[Xray配置]${gl_bai}"
+    echo "8. 查看Xray配置"
+    echo "9. 设置Xray IPv6出站"
+    echo "10. 恢复Xray默认配置"
     echo ""
     echo -e "${gl_kjlan}[系统信息]${gl_bai}"
-    echo "6. 查看详细状态"
-    echo "7. 性能测试建议"
+    echo "11. 查看详细状态"
+    echo "12. IP媒体/AI解锁检测"
+    echo "13. PF_realm转发脚本"
+    echo "14. 酷雪云脚本"
+    echo "15. 御坂美琴一键双协议"
+    echo "16. NS论坛的cake调优"
     echo ""
     echo "0. 退出脚本"
     echo "------------------------------------------------"
@@ -886,10 +1096,37 @@ show_main_menu() {
             manage_swap
             ;;
         6)
-            show_detailed_status
+            set_ipv4_priority
             ;;
         7)
-            show_performance_test
+            set_ipv6_priority
+            ;;
+        8)
+            show_xray_config
+            ;;
+        9)
+            set_xray_ipv6_outbound
+            ;;
+        10)
+            restore_xray_default
+            ;;
+        11)
+            show_detailed_status
+            ;;
+        12)
+            run_unlock_check
+            ;;
+        13)
+            run_pf_realm
+            ;;
+        14)
+            run_kxy_script
+            ;;
+        15)
+            run_misaka_xray
+            ;;
+        16)
+            run_ns_cake
             ;;
         0)
             echo "退出脚本"
@@ -1025,26 +1262,83 @@ uninstall_xanmod() {
     esac
 }
 
-show_performance_test() {
+run_unlock_check() {
     clear
-    echo -e "${gl_kjlan}=== 性能测试建议 ===${gl_bai}"
+    echo -e "${gl_kjlan}=== IP媒体/AI解锁检测 ===${gl_bai}"
     echo ""
-    echo "1. 验证 BBR v3 版本:"
-    echo "   modinfo tcp_bbr | grep version"
+    echo "正在运行流媒体解锁检测脚本..."
+    echo "------------------------------------------------"
     echo ""
-    echo "2. 检查当前配置:"
-    echo "   sysctl net.ipv4.tcp_congestion_control"
-    echo "   sysctl net.core.default_qdisc"
+
+    # 执行解锁检测脚本
+    bash <(curl -L -s check.unlock.media)
+
     echo ""
-    echo "3. 带宽测试:"
-    echo "   wget -O /dev/null http://cachefly.cachefly.net/10gb.test"
+    echo "------------------------------------------------"
+    break_end
+}
+
+run_pf_realm() {
+    clear
+    echo -e "${gl_kjlan}=== PF_realm转发脚本 ===${gl_bai}"
     echo ""
-    echo "4. 延迟测试:"
-    echo "   ping -c 100 8.8.8.8"
+    echo "正在运行 PF_realm 转发脚本安装程序..."
+    echo "------------------------------------------------"
     echo ""
-    echo "5. iperf3 测试:"
-    echo "   iperf3 -c speedtest.example.com"
+
+    # 执行 PF_realm 转发脚本
+    wget -qO- https://raw.githubusercontent.com/zywe03/realm-xwPF/main/xwPF.sh | sudo bash -s install
+
     echo ""
+    echo "------------------------------------------------"
+    break_end
+}
+
+run_kxy_script() {
+    clear
+    echo -e "${gl_kjlan}=== 酷雪云脚本 ===${gl_bai}"
+    echo ""
+    echo "正在运行酷雪云脚本..."
+    echo "------------------------------------------------"
+    echo ""
+
+    # 执行酷雪云脚本
+    bash <(curl -sL https://cdn.kxy.ovh/kxy.sh)
+
+    echo ""
+    echo "------------------------------------------------"
+    break_end
+}
+
+run_misaka_xray() {
+    clear
+    echo -e "${gl_kjlan}=== 御坂美琴一键双协议 ===${gl_bai}"
+    echo ""
+    echo "正在运行御坂美琴一键双协议安装脚本..."
+    echo "------------------------------------------------"
+    echo ""
+
+    # 执行御坂美琴一键双协议脚本
+    bash <(curl -L https://raw.githubusercontent.com/yahuisme/xray-dual/main/install.sh)
+
+    echo ""
+    echo "------------------------------------------------"
+    break_end
+}
+
+run_ns_cake() {
+    clear
+    echo -e "${gl_kjlan}=== NS论坛的cake调优 ===${gl_bai}"
+    echo ""
+    echo "正在下载并运行 NS论坛 cake 调优脚本..."
+    echo "------------------------------------------------"
+    echo ""
+
+    # 执行 NS论坛 cake 调优脚本
+    wget -O tcpx.sh "https://github.com/ylx2016/Linux-NetSpeed/raw/master/tcpx.sh" && chmod +x tcpx.sh && ./tcpx.sh
+
+    echo ""
+    echo "------------------------------------------------"
     break_end
 }
 
