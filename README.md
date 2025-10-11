@@ -3,7 +3,7 @@
 🚀 **XanMod 内核 + BBR v3 + 全方位 VPS 管理工具集**
 一键安装 XanMod 内核，启用 BBR v3 拥塞控制，集成 25+ 实用工具，全面优化你的 VPS 服务器。
 
-> **版本**: 2.4 (Intelligent Detection Edition)
+> **版本**: 2.5 (Optimized Menu Edition)
 > 
 > **快速上手**: [📖 快速使用指南](QUICK_START.md) | **视频教程**: [🎬 B站教程](https://www.bilibili.com/video/BV14K421x7BS)
 
@@ -108,9 +108,10 @@ chmod +x bbr.sh
    - 支持 x86_64 & ARM64 架构
    - 自动检测 CPU 最优版本（v2/v3/v4）
 
-2. **⚡ BBR v3 智能配置**
-   - 快速启用 BBR + FQ（≤1GB 内存）+ 智能SWAP检测
-   - 快速启用 BBR + FQ（2GB+ 内存）+ 智能SWAP检测
+2. **⚡ BBR TCP调优系统**
+   - **Linux系统内核参数优化** - 6种模式（高性能/均衡/网站/直播/游戏服/还原）
+   - **CAKE队列算法优化** - 单独cake脚本
+   - **BBR直连/落地优化** - 智能带宽检测，自动计算最优缓冲区（8-32MB）
    - 自动检测内存并建议SWAP配置
    - 一键式完整优化流程（5步走）
 
@@ -143,10 +144,10 @@ chmod +x bbr.sh
    - 科技lion 脚本
    - F佬一键 sing-box 脚本
 
-8. **⚙️ 系统优化**
-   - Linux 系统内核参数优化
-   - 6种优化模式（高性能/均衡/网站/直播/游戏服/还原）
-   - 文件描述符、虚拟内存、网络设置全方位优化
+8. **📋 系统信息**
+   - 详细系统状态查询
+   - CPU、内存、网络流量统计
+   - 地理位置、运营商信息
 
 ---
 
@@ -160,30 +161,30 @@ chmod +x bbr.sh
 |------|-----------|-----------|
 | **安装/更新内核** | 1 | 1（更新） |
 | **卸载内核** | - | 2 |
-| **BBR (≤1GB)** | 2 | 3 |
-| **BBR (2GB+)** | 3 | 4 |
-| **虚拟内存管理** | 4 | 5 |
-| **IPv4优先** | 5 | 6 |
-| **IPv6优先** | 6 | 7 |
-| **查看Xray配置** | 7 | 8 |
-| **Xray IPv6出站** | 8 | 9 |
-| **恢复Xray默认** | 9 | 10 |
-| **查看详细状态** | 10 | 11 |
-| **NS一键检测** | 11 | 12 |
-| **服务器带宽测试** | 12 | 13 |
-| **三网回程路由** | 13 | 14 |
-| **IP质量检测** | 14 | 15 |
-| **IP质量-IPv4** | 15 | 16 |
-| **网络延迟检测** | 16 | 17 |
-| **国际互联速度** | 17 | 18 |
-| **媒体/AI解锁** | 18 | 19 |
-| **PF_realm转发** | 19 | 20 |
-| **御坂美琴双协议** | 20 | 21 |
-| **NS论坛cake调优** | 21 | 22 |
-| **酷雪云脚本** | 22 | 23 |
-| **科技lion脚本** | 23 | 24 |
-| **F佬sing box** | 24 | 25 |
-| **内核参数优化** | 25 | 26 |
+| **系统内核参数优化** | 2 | 3 |
+| **单独cake脚本** | 3 | 4 |
+| **BBR直连/落地** | 4 | 5 |
+| **虚拟内存管理** | 5 | 6 |
+| **IPv4优先** | 6 | 7 |
+| **IPv6优先** | 7 | 8 |
+| **查看Xray配置** | 8 | 9 |
+| **Xray IPv6出站** | 9 | 10 |
+| **恢复Xray默认** | 10 | 11 |
+| **查看详细状态** | 11 | 12 |
+| **NS一键检测** | 12 | 13 |
+| **服务器带宽测试** | 13 | 14 |
+| **三网回程路由** | 14 | 15 |
+| **IP质量检测** | 15 | 16 |
+| **IP质量-IPv4** | 16 | 17 |
+| **网络延迟检测** | 17 | 18 |
+| **国际互联速度** | 18 | 19 |
+| **媒体/AI解锁** | 19 | 20 |
+| **PF_realm转发** | 20 | 21 |
+| **御坂美琴双协议** | 21 | 22 |
+| **NS论坛cake调优** | 22 | 23 |
+| **酷雪云脚本** | 23 | 24 |
+| **科技lion脚本** | 24 | 25 |
+| **F佬sing box** | 25 | 26 |
 
 ### [内核管理]
 - **未安装时**:
@@ -192,18 +193,27 @@ chmod +x bbr.sh
   - 1. 更新 XanMod 内核
   - 2. 卸载 XanMod 内核
 
-### [BBR TCP调优] 🆕 智能检测版
+### [BBR TCP调优] 🆕 优化版
 
-**核心功能**：
-- **直连/落地优化** - 智能带宽检测，自动计算最优缓冲区（8-32MB）
-- **中转优化** - 固定4MB小缓冲区，快速转发模式
+**核心功能**（已重新排序，优先展示系统优化）：
 
-| 配置模式 | 缓冲区 | TIME_WAIT重用 | 适用场景 |
-|---------|--------|--------------|---------|
-| **直连/落地** | 自动检测(8-32MB) | ✅ 启用 | 最终落地机 |
-| **中转** | 固定4MB | ❌ 禁用 | 所有中转层 |
+1. **Linux系统内核参数优化** - 6种优化模式
+   - 高性能优化模式
+   - 均衡优化模式
+   - 网站优化模式
+   - 直播优化模式
+   - 游戏服优化模式
+   - 还原默认设置
 
-**智能带宽检测流程**（直连模式）：
+2. **单独cake脚本** - CAKE队列算法优化
+
+3. **BBR直连/落地优化** - 智能带宽检测版
+   - 自动检测带宽并计算最优缓冲区（8-32MB）
+   - 支持手动选择通用值（16MB）
+   - TIME_WAIT重用启用（高并发）
+   - 智能SWAP检测与建议
+
+**智能带宽检测流程**（BBR直连模式）：
 1. 🔍 选择检测方式：自动运行speedtest / 使用通用值
 2. 📊 自动提取上传带宽（Upload速度）
 3. 🎯 智能计算缓冲区：
@@ -216,13 +226,13 @@ chmod +x bbr.sh
 4. ✅ 询问确认后应用配置
 
 **使用示例**：
-- **软银 7Gbps 落地**：选择"直连优化" → 自动检测 → 28MB缓冲区
-- **9929 700Mbps 中转**：选择"中转优化" → 固定4MB缓冲区
-- **三层转发架构**：9929(中转4MB) → dmit(中转4MB) → misaka(直连8MB)
+- **软银 7Gbps 落地**：选择"BBR直连优化" → 自动检测 → 28MB缓冲区
+- **选项2**：Linux系统内核参数优化 → 高性能模式
+- **选项3**：单独cake脚本 → CAKE队列优化
 
 **新特性**:
-- ✅ **消除内存分类**：不再需要选择"≤1GB"或"2GB+"
-- ✅ **智能SWAP集成**：执行前自动检测并建议SWAP配置
+- ✅ **优化菜单顺序**：系统优化和CAKE脚本优先展示
+- ✅ **智能SWAP集成**：执行BBR前自动检测并建议SWAP配置
 - ✅ **精准优化**：根据实际带宽而非内存大小配置
 
 ---
@@ -230,13 +240,12 @@ chmod +x bbr.sh
 ### 🎯 快速定位功能
 
 **内核管理**: 1 (安装/更新), 2 (卸载，仅已安装时)  
-**BBR优化**: 2-3 (未安装), 3-4 (已安装)  
-**系统设置**: 4-6 (未安装), 5-7 (已安装)  
-**Xray配置**: 7-9 (未安装), 8-10 (已安装)  
-**系统信息**: 10 (未安装), 11 (已安装)  
-**服务器检测**: 11-18 (未安装), 12-19 (已安装)  
-**脚本合集**: 19-24 (未安装), 20-25 (已安装)  
-**系统优化**: 25 (未安装), 26 (已安装)
+**BBR TCP调优**: 2-4 (未安装), 3-5 (已安装)  
+**系统设置**: 5-7 (未安装), 6-8 (已安装)  
+**Xray配置**: 8-10 (未安装), 9-11 (已安装)  
+**系统信息**: 11 (未安装), 12 (已安装)  
+**服务器检测**: 12-19 (未安装), 13-20 (已安装)  
+**脚本合集**: 20-25 (未安装), 21-26 (已安装)
 
 ---
 
@@ -271,7 +280,7 @@ bash <(wget -qO- https://raw.githubusercontent.com/Eric86777/vps-tcp-tune/main/n
 
 ⚠️ **安装完成后必须重启系统！**
 
-### 第三步：配置 BBR（v2.3 智能SWAP集成版）
+### 第三步：系统优化与BBR配置
 
 重启后再次运行脚本：
 
@@ -279,17 +288,28 @@ bash <(wget -qO- https://raw.githubusercontent.com/Eric86777/vps-tcp-tune/main/n
 bash <(wget -qO- https://raw.githubusercontent.com/Eric86777/vps-tcp-tune/main/net-tcp-tune.sh)
 ```
 
-**推荐配置：**
-- 选项 **2**：BBR + FQ（≤1GB 内存）+ 🧠智能SWAP检测
-  - 16MB 缓冲区，85KB 默认值
-  - 19个优化参数（含精华参数）
-  - **新增**: 执行前智能检测SWAP
-- 选项 **3**：BBR + FQ（2GB+ 内存）+ 🧠智能SWAP检测
-  - 32MB 缓冲区，256KB 默认值
-  - 23个优化参数（含精华参数）
-  - **新增**: 执行前智能检测SWAP
+**推荐配置流程（v2.5优化版）：**
 
-#### 🎯 智能SWAP检测（v2.3新特性）
+#### 步骤1：系统内核参数优化
+- **已安装XanMod**: 选择选项 **3**
+- **未安装XanMod**: 选择选项 **2**
+- 根据服务器用途选择优化模式：
+  - 高性能模式（推荐）
+  - 网站优化模式
+  - 其他模式...
+
+#### 步骤2：CAKE队列算法优化（可选）
+- **已安装XanMod**: 选择选项 **4**
+- **未安装XanMod**: 选择选项 **3**
+- 执行NS论坛cake调优脚本
+
+#### 步骤3：BBR直连/落地优化
+- **已安装XanMod**: 选择选项 **5**
+- **未安装XanMod**: 选择选项 **4**
+- 智能带宽检测 + 自动SWAP配置
+- 根据带宽自动计算最优缓冲区（8-32MB）
+
+#### 🎯 智能SWAP检测（自动集成）
 
 执行BBR配置时，脚本会自动：
 
@@ -328,7 +348,6 @@ bash <(wget -qO- https://raw.githubusercontent.com/Eric86777/vps-tcp-tune/main/n
 - **DMIT洛杉矶 1c1g** → 输入 `Y`，配置2GB SWAP
 - **西雅图Misaka 1c1g** → 输入 `Y`，配置2GB SWAP
 - **日本软银 4c8g** → 自动跳过（内存充足）
-  - 额外高级优化（禁用慢启动、MTU探测等）
 
 ---
 
@@ -359,7 +378,7 @@ version:        3
 
 ## 🔧 虚拟内存智能计算
 
-脚本提供智能 SWAP 计算功能（菜单选项 **4** → **4**），根据物理内存自动推荐：
+脚本提供智能 SWAP 计算功能（菜单选项 **5/6**），根据物理内存自动推荐：
 
 | 物理内存 | 推荐 SWAP | 计算公式 |
 |---------|-----------|---------|
@@ -374,12 +393,12 @@ version:        3
 
 ## 🌐 IPv4/IPv6 优先级设置
 
-### 设置 IPv4 优先（选项 5）
+### 设置 IPv4 优先（选项 6/7）
 - 修改 `/etc/gai.conf` 配置
 - 启用 IPv4 优先解析
 - 自动显示当前出口 IP
 
-### 设置 IPv6 优先（选项 6）
+### 设置 IPv6 优先（选项 7/8）
 - 修改 `/etc/gai.conf` 配置
 - 禁用 IPv4 优先（即 IPv6 优先）
 - 自动显示当前出口 IP
@@ -388,16 +407,16 @@ version:        3
 
 ## 🔐 Xray 配置管理
 
-### 查看配置（选项 7）
+### 查看配置（选项 8/9）
 - 显示 `/usr/local/etc/xray/config.json` 完整内容
 
-### IPv6 出站（选项 8）
+### IPv6 出站（选项 9/10）
 - 自动备份当前配置
 - 使用 `jq` 修改为 IPv6 出站
 - 测试配置有效性
 - 失败自动回滚
 
-### 恢复默认（选项 9）
+### 恢复默认（选项 10/11）
 - 恢复双栈模式（IPv4/IPv6）
 - 自动备份和测试
 
@@ -405,24 +424,24 @@ version:        3
 
 ## 📊 网络测试工具
 
-### 服务器带宽测试（选项 12）
+### 服务器带宽测试（选项 13/14）
 - 自动检测系统架构（x86_64/ARM64）
 - 下载并安装 Speedtest CLI
 - 运行完整带宽测试
 
-### 三网回程路由测试（选项 13）
+### 三网回程路由测试（选项 14/15）
 - 测试电信/联通/移动回程路由
 - 显示完整路由追踪
 
-### IP 质量检测（选项 14/15）
+### IP 质量检测（选项 15-16/16-17）
 - 完整检测：IPv4 + IPv6
 - 仅 IPv4 检测
 
-### 网络延迟质量检测（选项 16）
+### 网络延迟质量检测（选项 17/18）
 - 测试到全球多个节点的延迟
 - 评估网络质量
 
-### 国际互联速度测试（选项 17）
+### 国际互联速度测试（选项 18/19）
 - 测试国际互联带宽
 - 下载 latency.sh 脚本执行
 
@@ -430,7 +449,7 @@ version:        3
 
 ## 🎯 流媒体解锁检测
 
-### IP 媒体/AI 解锁检测（选项 18）
+### IP 媒体/AI 解锁检测（选项 19/20）
 - 检测 Netflix、Disney+、HBO 等流媒体
 - 检测 OpenAI、Claude 等 AI 服务
 - 显示解锁状态
@@ -439,30 +458,33 @@ version:        3
 
 ## 🔌 第三方工具集成
 
-### PF_realm 转发脚本（选项 19）
+### PF_realm 转发脚本（选项 20/21）
 - 高性能端口转发工具
 - 支持 TCP/UDP
+- ✅ 已优化：移除sudo调用，增强错误处理
 
-### 御坂美琴一键双协议（选项 20）
+### 御坂美琴一键双协议（选项 21/22）
 - Xray 双协议一键安装
+- ✅ 已优化：增强错误检查和提示
 
-### NS 论坛 cake 调优（选项 21）
+### NS 论坛 cake 调优（选项 22/23）
 - CAKE 队列算法优化脚本
+- ✅ 已优化：使用绝对路径，增强错误处理
 
-### 酷雪云脚本（选项 22）
+### 酷雪云脚本（选项 23/24）
 - 酷雪云官方工具集
 
-### 科技lion 脚本（选项 23）
+### 科技lion 脚本（选项 24/25）
 - 综合 VPS 管理工具
 
-### F佬一键 sing-box 脚本（选项 24）
+### F佬一键 sing-box 脚本（选项 25/26）
 - sing-box 一键安装配置
 
 ---
 
 ## ⚙️ 系统内核参数优化
 
-### Linux 系统内核参数优化（选项 25）
+### Linux 系统内核参数优化（选项 2/3）
 
 提供多种系统参数调优模式，用户可以根据自身使用场景进行选择切换。
 
@@ -541,11 +563,12 @@ version:        3
 /etc/sysctl.d/99-bbr-ultimate.conf
 ```
 
-### ≤1GB 内存版本配置（增强版）
+### BBR直连/落地优化配置（智能检测版）
 
 ```bash
-# BBR v3 Ultimate Configuration (Enhanced Edition)
-# Generated on 2025-01-10
+# BBR v3 Direct/Endpoint Configuration (Intelligent Detection Edition)
+# Generated on 2025-01-11
+# Bandwidth: 1000 Mbps | Buffer: 16 MB
 
 # 队列调度算法
 net.core.default_qdisc=fq
@@ -553,79 +576,32 @@ net.core.default_qdisc=fq
 # 拥塞控制算法
 net.ipv4.tcp_congestion_control=bbr
 
-# TCP 缓冲区优化（16MB 上限，适合小内存 VPS）
+# TCP 缓冲区优化（智能检测：16MB）
 net.core.rmem_max=16777216
 net.core.wmem_max=16777216
 net.ipv4.tcp_rmem=4096 87380 16777216
 net.ipv4.tcp_wmem=4096 65536 16777216
 
-# ===== 精华参数优化（1GB内存版）=====
+# ===== 直连/落地优化参数 =====
 
-# TIME_WAIT 重用（高并发必备）
+# TIME_WAIT 重用（启用，提高并发）
 net.ipv4.tcp_tw_reuse=1
 
-# 端口范围扩大（代理/转发必备）
+# 端口范围（最大化）
 net.ipv4.ip_local_port_range=1024 65535
 
-# 连接队列增大（Web服务器必备）
+# 连接队列（高性能）
 net.core.somaxconn=4096
-
-# 虚拟内存优化（1GB内存优化）
-vm.swappiness=20
-vm.dirty_ratio=20
-vm.dirty_background_ratio=5
-vm.overcommit_memory=1
-vm.min_free_kbytes=32768
-vm.vfs_cache_pressure=50
-
-# CPU调度优化
-kernel.sched_autogroup_enabled=0
-kernel.numa_balancing=0
-
-# 文件描述符（/etc/security/limits.conf）
-* soft nofile 65535
-* hard nofile 65535
-
-# 透明大页面禁用
-echo never > /sys/kernel/mm/transparent_hugepage/enabled
-```
-
-### 2GB+ 内存版本配置（增强版）
-
-```bash
-# BBR v3 Ultimate Configuration (2GB+ Memory - Enhanced Edition)
-# Generated on 2025-01-10
-
-# 队列调度算法
-net.core.default_qdisc=fq
-
-# 拥塞控制算法
-net.ipv4.tcp_congestion_control=bbr
-
-# TCP 缓冲区优化（32MB 上限，256KB 默认值）
-net.core.rmem_max=33554432
-net.core.wmem_max=33554432
-net.ipv4.tcp_rmem=4096 262144 33554432
-net.ipv4.tcp_wmem=4096 262144 33554432
-
-# 高级优化（适合高带宽场景）
-net.ipv4.tcp_slow_start_after_idle=0
-net.ipv4.tcp_mtu_probing=1
-net.core.netdev_max_backlog=16384
 net.ipv4.tcp_max_syn_backlog=8192
 
-# ===== 精华参数优化（完整版）=====
+# 网络队列（高带宽优化）
+net.core.netdev_max_backlog=16384
 
-# TIME_WAIT 重用（高并发必备）
-net.ipv4.tcp_tw_reuse=1
+# 高级TCP优化
+net.ipv4.tcp_slow_start_after_idle=0
+net.ipv4.tcp_mtu_probing=1
 
-# 端口范围扩大（代理/转发必备）
-net.ipv4.ip_local_port_range=1024 65535
-
-# 连接队列增大（Web服务器必备）
-net.core.somaxconn=4096
-
-# 虚拟内存优化（2GB+完整版）
+# 虚拟内存优化（根据物理内存调整）
 vm.swappiness=10
 vm.dirty_ratio=15
 vm.dirty_background_ratio=5
@@ -636,13 +612,6 @@ vm.vfs_cache_pressure=50
 # CPU调度优化
 kernel.sched_autogroup_enabled=0
 kernel.numa_balancing=0
-
-# 文件描述符（/etc/security/limits.conf）
-* soft nofile 65535
-* hard nofile 65535
-
-# 透明大页面禁用
-echo never > /sys/kernel/mm/transparent_hugepage/enabled
 ```
 
 ---
@@ -689,7 +658,7 @@ A: BBR v3 改进了拥塞窗口计算，减少了丢包，提升了跨国高延�
 A: 可以，脚本会自动检测 ARM64 架构并调用专用安装脚本。
 
 ### Q: 虚拟内存（SWAP）应该设置多大？
-A: 使用脚本的智能计算功能（菜单选项 **4** → **4**），会根据物理内存自动推荐最佳大小。
+A: 使用脚本的智能计算功能（菜单选项 **5/6**），会根据物理内存自动推荐最佳大小。
 
 ### Q: 安装失败怎么办？
 A: 检查：
@@ -699,10 +668,13 @@ A: 检查：
 - 尝试更换软件源
 
 ### Q: Xray 配置修改后无法连接？
-A: 使用菜单选项 **9** 恢复默认配置，或检查备份文件：
+A: 使用菜单选项 **10/11** 恢复默认配置，或检查备份文件：
 ```bash
 ls -la /usr/local/etc/xray/config.json.bak.*
 ```
+
+### Q: 为什么系统优化放在BBR调优前面？
+A: v2.5版本优化了菜单顺序，将常用的系统内核参数优化和CAKE脚本优先展示，方便快速访问。建议先执行系统优化，再执行BBR配置。
 
 ---
 
@@ -712,6 +684,7 @@ ls -la /usr/local/etc/xray/config.json.bak.*
 - **BBR v3 论文**: [Google BBR v3](https://github.com/google/bbr)
 - **FQ 文档**: [Fair Queue](https://www.kernel.org/doc/html/latest/networking/fq.html)
 - **Xray 文档**: [https://xtls.github.io/](https://xtls.github.io/)
+- **CAKE 文档**: [Common Applications Kept Enhanced](https://www.bufferbloat.net/projects/codel/wiki/Cake/)
 
 ---
 
@@ -730,6 +703,39 @@ MIT
 ---
 
 ## 📝 更新日志
+
+### v2.5 (2025-01-11) - Optimized Menu Edition
+
+- 🎯 **菜单结构优化**
+  - 将"Linux系统内核参数优化"和"单独cake脚本"移至BBR TCP调优分类顶部
+  - 优化后顺序：系统优化 → CAKE优化 → BBR配置
+  - 更符合实际使用流程：先系统优化，再队列优化，最后BBR调优
+
+- 🔧 **功能位置调整**
+  - **已安装XanMod**：
+    - 选项3：Linux系统内核参数优化
+    - 选项4：单独cake脚本
+    - 选项5：BBR直连/落地优化
+  - **未安装XanMod**：
+    - 选项2：Linux系统内核参数优化
+    - 选项3：单独cake脚本
+    - 选项4：BBR直连/落地优化
+
+- ✅ **删除中转优化配置**
+  - 移除"BBR中转优化（固定4MB）"选项
+  - 简化配置流程，专注直连/落地场景
+  - 保留BBR直连/落地智能检测功能
+
+- 🛠️ **第三方脚本调用优化**
+  - 修复PF_realm脚本：移除sudo调用，增强错误处理
+  - 修复御坂美琴脚本：增强错误检查和提示
+  - 修复NS论坛cake脚本：使用绝对路径（/tmp），增强错误处理和清理
+  - 所有外部脚本都增加了友好的失败提示
+
+- 📊 **改进项**
+  - 更新README文档，反映最新菜单结构
+  - 优化菜单对照表，更易查找
+  - 完善使用流程说明
 
 ### v2.4 (2025-01-10) - Intelligent Detection Edition
 
