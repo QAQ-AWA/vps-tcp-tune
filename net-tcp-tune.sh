@@ -528,7 +528,7 @@ detect_bandwidth() {
                 cd /tmp
                 wget -q "$download_url" -O speedtest.tgz && \
                 tar -xzf speedtest.tgz && \
-                sudo mv speedtest /usr/local/bin/ && \
+                mv speedtest /usr/local/bin/ && \
                 rm -f speedtest.tgz
                 
                 if [ $? -ne 0 ]; then
@@ -1032,193 +1032,6 @@ LIMITSEOF
        [ "$actual_wmem" = "$buffer_bytes" ] && [ "$actual_rmem" = "$buffer_bytes" ]; then
         echo -e "${gl_lv}✅ BBR v3 直连/落地优化配置完成并已生效！${gl_bai}"
         echo -e "${gl_zi}配置说明: ${buffer_mb}MB 缓冲区（${detected_bandwidth} Mbps 带宽），适合直连/落地场景${gl_bai}"
-    else
-        echo -e "${gl_huang}⚠️ 配置已保存但部分参数未生效${gl_bai}"
-        echo -e "${gl_huang}建议执行以下操作：${gl_bai}"
-        echo "1. 检查是否有其他配置文件冲突"
-        echo "2. 重启服务器使配置完全生效: reboot"
-    fi
-}
-
-# 中转优化配置（固定4MB）
-bbr_configure_relay() {
-    echo -e "${gl_kjlan}=== 配置 BBR v3 + FQ 中转优化（快速转发模式） ===${gl_bai}"
-    echo ""
-    
-    echo -e "${gl_zi}配置说明:${gl_bai}"
-    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    echo "  缓冲区大小: 4MB（小缓冲区，快速转发）"
-    echo "  TIME_WAIT重用: 禁用（避免端口冲突）"
-    echo "  端口范围: 5000-65535（避开系统端口）"
-    echo "  适用场景: 所有中转服务器（第一层/第二层/多层）"
-    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    echo ""
-    
-    # 步骤 1：SWAP智能检测和建议
-    echo -e "${gl_zi}[步骤 1/5] 检测虚拟内存（SWAP）配置...${gl_bai}"
-    check_and_suggest_swap
-    
-    echo ""
-    echo -e "${gl_zi}[步骤 2/5] 清理配置冲突...${gl_bai}"
-    echo "正在检查配置冲突..."
-    
-    # 备份主配置文件（如果还没备份）
-    if [ -f /etc/sysctl.conf ] && ! [ -f /etc/sysctl.conf.bak.original ]; then
-        cp /etc/sysctl.conf /etc/sysctl.conf.bak.original
-        echo "已备份: /etc/sysctl.conf -> /etc/sysctl.conf.bak.original"
-    fi
-    
-    # 注释掉 /etc/sysctl.conf 中的 TCP 缓冲区配置（避免覆盖）
-    if [ -f /etc/sysctl.conf ]; then
-        sed -i '/^net.ipv4.tcp_wmem/s/^/# /' /etc/sysctl.conf 2>/dev/null
-        sed -i '/^net.ipv4.tcp_rmem/s/^/# /' /etc/sysctl.conf 2>/dev/null
-        sed -i '/^net.core.rmem_max/s/^/# /' /etc/sysctl.conf 2>/dev/null
-        sed -i '/^net.core.wmem_max/s/^/# /' /etc/sysctl.conf 2>/dev/null
-        echo "已清理 /etc/sysctl.conf 中的冲突配置"
-    fi
-    
-    # 删除可能存在的软链接
-    if [ -L /etc/sysctl.d/99-sysctl.conf ]; then
-        rm -f /etc/sysctl.d/99-sysctl.conf
-        echo "已删除配置软链接"
-    fi
-    
-    # 检查并清理可能覆盖的新旧配置冲突
-    check_and_clean_conflicts
-
-    # 步骤 2：创建独立配置文件（固定4MB）
-    echo ""
-    echo -e "${gl_zi}[步骤 3/5] 创建配置文件...${gl_bai}"
-    echo "正在创建新配置..."
-    cat > "$SYSCTL_CONF" << 'EOF'
-# BBR v3 Relay Configuration (Fixed 4MB Fast Forward Mode)
-# Generated on $(date)
-# Optimized for all relay/forwarding servers
-
-# 队列调度算法
-net.core.default_qdisc=fq
-
-# 拥塞控制算法
-net.ipv4.tcp_congestion_control=bbr
-
-# TCP 缓冲区优化（固定4MB，快速转发）
-net.core.rmem_max=4194304
-net.core.wmem_max=4194304
-net.ipv4.tcp_rmem=4096 87380 4194304
-net.ipv4.tcp_wmem=4096 65536 4194304
-
-# ===== 中转优化参数 =====
-
-# TIME_WAIT 重用（禁用，避免端口冲突）
-net.ipv4.tcp_tw_reuse=0
-
-# 端口范围（避开低端口，防止冲突）
-net.ipv4.ip_local_port_range=5000 65535
-
-# 连接队列（适中）
-net.core.somaxconn=2048
-net.ipv4.tcp_max_syn_backlog=4096
-
-# 网络队列（保守，快速转发）
-net.core.netdev_max_backlog=8192
-
-# 虚拟内存优化（保守）
-vm.swappiness=30
-vm.dirty_ratio=20
-vm.dirty_background_ratio=10
-vm.overcommit_memory=1
-vm.min_free_kbytes=32768
-vm.vfs_cache_pressure=50
-
-# CPU调度优化
-kernel.sched_autogroup_enabled=0
-kernel.numa_balancing=0
-EOF
-
-    # 步骤 3：应用配置
-    echo ""
-    echo -e "${gl_zi}[步骤 4/5] 应用所有优化参数...${gl_bai}"
-    echo "正在应用配置..."
-    sysctl -p "$SYSCTL_CONF" > /dev/null 2>&1
-    
-    # 立即应用 fq，并启用 MSS clamp（无需重启）
-    echo "正在应用队列与防分片（无需重启）..."
-    apply_tc_fq_now >/dev/null 2>&1
-    apply_mss_clamp enable >/dev/null 2>&1
-    
-    # 配置文件描述符限制
-    echo "正在优化文件描述符限制..."
-    if ! grep -q "BBR - 文件描述符优化" /etc/security/limits.conf 2>/dev/null; then
-        cat >> /etc/security/limits.conf << 'LIMITSEOF'
-# BBR - 文件描述符优化
-* soft nofile 65535
-* hard nofile 65535
-LIMITSEOF
-    fi
-    ulimit -n 65535 2>/dev/null
-    
-    # 禁用透明大页面
-    if [ -f /sys/kernel/mm/transparent_hugepage/enabled ]; then
-        echo never > /sys/kernel/mm/transparent_hugepage/enabled 2>/dev/null
-    fi
-
-    # 步骤 4：验证配置是否真正生效
-    echo ""
-    echo -e "${gl_zi}[步骤 5/5] 验证配置...${gl_bai}"
-    
-    local actual_qdisc=$(sysctl -n net.core.default_qdisc 2>/dev/null)
-    local actual_cc=$(sysctl -n net.ipv4.tcp_congestion_control 2>/dev/null)
-    local actual_wmem=$(sysctl -n net.ipv4.tcp_wmem 2>/dev/null | awk '{print $3}')
-    local actual_rmem=$(sysctl -n net.ipv4.tcp_rmem 2>/dev/null | awk '{print $3}')
-    local actual_tw_reuse=$(sysctl -n net.ipv4.tcp_tw_reuse 2>/dev/null)
-    
-    echo ""
-    echo -e "${gl_kjlan}=== 配置验证 ===${gl_bai}"
-    
-    # 验证队列算法
-    if [ "$actual_qdisc" = "fq" ]; then
-        echo -e "队列算法: ${gl_lv}$actual_qdisc ✓${gl_bai}"
-    else
-        echo -e "队列算法: ${gl_huang}$actual_qdisc (期望: fq) ⚠${gl_bai}"
-    fi
-    
-    # 验证拥塞控制
-    if [ "$actual_cc" = "bbr" ]; then
-        echo -e "拥塞控制: ${gl_lv}$actual_cc ✓${gl_bai}"
-    else
-        echo -e "拥塞控制: ${gl_huang}$actual_cc (期望: bbr) ⚠${gl_bai}"
-    fi
-    
-    # 验证缓冲区（固定4MB）
-    if [ "$actual_wmem" = "4194304" ]; then
-        echo -e "发送缓冲区: ${gl_lv}4MB ✓${gl_bai}"
-    else
-        local actual_wmem_mb=$((actual_wmem / 1048576))
-        echo -e "发送缓冲区: ${gl_huang}${actual_wmem_mb}MB (期望: 4MB) ⚠${gl_bai}"
-    fi
-    
-    if [ "$actual_rmem" = "4194304" ]; then
-        echo -e "接收缓冲区: ${gl_lv}4MB ✓${gl_bai}"
-    else
-        local actual_rmem_mb=$((actual_rmem / 1048576))
-        echo -e "接收缓冲区: ${gl_huang}${actual_rmem_mb}MB (期望: 4MB) ⚠${gl_bai}"
-    fi
-    
-    # 验证TIME_WAIT重用（应该禁用）
-    if [ "$actual_tw_reuse" = "0" ]; then
-        echo -e "TIME_WAIT重用: ${gl_lv}禁用 ✓${gl_bai}"
-    else
-        echo -e "TIME_WAIT重用: ${gl_huang}启用 (期望: 禁用) ⚠${gl_bai}"
-    fi
-    
-    echo ""
-    
-    # 最终判断
-    if [ "$actual_qdisc" = "fq" ] && [ "$actual_cc" = "bbr" ] && \
-       [ "$actual_wmem" = "4194304" ] && [ "$actual_rmem" = "4194304" ] && \
-       [ "$actual_tw_reuse" = "0" ]; then
-        echo -e "${gl_lv}✅ BBR v3 中转优化配置完成并已生效！${gl_bai}"
-        echo -e "${gl_zi}配置说明: 4MB 小缓冲区，快速转发模式，适合所有中转场景${gl_bai}"
     else
         echo -e "${gl_huang}⚠️ 配置已保存但部分参数未生效${gl_bai}"
         echo -e "${gl_huang}建议执行以下操作：${gl_bai}"
@@ -1859,7 +1672,7 @@ run_speedtest() {
 
     # 移动到系统目录
     echo "正在安装..."
-    sudo mv speedtest /usr/local/bin/
+    mv speedtest /usr/local/bin/
 
     if [ $? -ne 0 ]; then
         echo -e "${gl_hong}安装失败！${gl_bai}"
@@ -2030,48 +1843,6 @@ show_main_menu() {
         echo ""
         echo -e "${gl_kjlan}[BBR TCP调优]${gl_bai}"
         echo "3. BBR 直连/落地优化（智能带宽检测）"
-        echo "4. BBR 中转优化（固定4MB快速转发）"
-        echo ""
-        echo -e "${gl_kjlan}[系统设置]${gl_bai}"
-        echo "5. 虚拟内存管理"
-        echo "6. 设置IPv4优先"
-        echo "7. 设置IPv6优先"
-        echo ""
-        echo -e "${gl_kjlan}[Xray配置]${gl_bai}"
-        echo "8. 查看Xray配置"
-        echo "9. 设置Xray IPv6出站"
-        echo "10. 恢复Xray默认配置"
-        echo ""
-        echo -e "${gl_kjlan}[系统信息]${gl_bai}"
-        echo "11. 查看详细状态"
-        echo ""
-        echo -e "${gl_kjlan}[服务器检测合集]${gl_bai}"
-        echo "12. NS一键检测脚本"
-        echo "13. 服务器带宽测试"
-        echo "14. 三网回程路由测试"
-        echo "15. IP质量检测"
-        echo "16. IP质量检测-仅IPv4"
-        echo "17. 网络延迟质量检测"
-        echo "18. 国际互联速度测试"
-        echo "19. IP媒体/AI解锁检测"
-        echo ""
-        echo -e "${gl_kjlan}[脚本合集]${gl_bai}"
-        echo "20. PF_realm转发脚本"
-        echo "21. 御坂美琴一键双协议"
-        echo "22. NS论坛的cake调优"
-        echo "23. 酷雪云脚本"
-        echo "24. 科技lion脚本"
-        echo "25. F佬一键sing box脚本"
-        echo ""
-        echo -e "${gl_kjlan}[系统优化]${gl_bai}"
-        echo "26. Linux系统内核参数优化"
-        echo "27. 单独cake脚本"
-    else
-        echo "1. 安装 XanMod 内核 + BBR v3"
-        echo ""
-        echo -e "${gl_kjlan}[BBR TCP调优]${gl_bai}"
-        echo "2. BBR 直连/落地优化（智能带宽检测）"
-        echo "3. BBR 中转优化（固定4MB快速转发）"
         echo ""
         echo -e "${gl_kjlan}[系统设置]${gl_bai}"
         echo "4. 虚拟内存管理"
@@ -2107,6 +1878,46 @@ show_main_menu() {
         echo -e "${gl_kjlan}[系统优化]${gl_bai}"
         echo "25. Linux系统内核参数优化"
         echo "26. 单独cake脚本"
+    else
+        echo "1. 安装 XanMod 内核 + BBR v3"
+        echo ""
+        echo -e "${gl_kjlan}[BBR TCP调优]${gl_bai}"
+        echo "2. BBR 直连/落地优化（智能带宽检测）"
+        echo ""
+        echo -e "${gl_kjlan}[系统设置]${gl_bai}"
+        echo "3. 虚拟内存管理"
+        echo "4. 设置IPv4优先"
+        echo "5. 设置IPv6优先"
+        echo ""
+        echo -e "${gl_kjlan}[Xray配置]${gl_bai}"
+        echo "6. 查看Xray配置"
+        echo "7. 设置Xray IPv6出站"
+        echo "8. 恢复Xray默认配置"
+        echo ""
+        echo -e "${gl_kjlan}[系统信息]${gl_bai}"
+        echo "9. 查看详细状态"
+        echo ""
+        echo -e "${gl_kjlan}[服务器检测合集]${gl_bai}"
+        echo "10. NS一键检测脚本"
+        echo "11. 服务器带宽测试"
+        echo "12. 三网回程路由测试"
+        echo "13. IP质量检测"
+        echo "14. IP质量检测-仅IPv4"
+        echo "15. 网络延迟质量检测"
+        echo "16. 国际互联速度测试"
+        echo "17. IP媒体/AI解锁检测"
+        echo ""
+        echo -e "${gl_kjlan}[脚本合集]${gl_bai}"
+        echo "18. PF_realm转发脚本"
+        echo "19. 御坂美琴一键双协议"
+        echo "20. NS论坛的cake调优"
+        echo "21. 酷雪云脚本"
+        echo "22. 科技lion脚本"
+        echo "23. F佬一键sing box脚本"
+        echo ""
+        echo -e "${gl_kjlan}[系统优化]${gl_bai}"
+        echo "24. Linux系统内核参数优化"
+        echo "25. 单独cake脚本"
     fi
     
     echo ""
@@ -2142,173 +1953,164 @@ show_main_menu() {
                 bbr_configure_direct
                 break_end
             else
-                bbr_configure_relay
-                break_end
-            fi
-            ;;
-        4)
-            if [ $is_installed -eq 0 ]; then
-                bbr_configure_relay
-                break_end
-            else
                 manage_swap
             fi
             ;;
-        5)
+        4)
             if [ $is_installed -eq 0 ]; then
                 manage_swap
             else
                 set_ipv4_priority
             fi
             ;;
-        6)
+        5)
             if [ $is_installed -eq 0 ]; then
                 set_ipv4_priority
             else
                 set_ipv6_priority
             fi
             ;;
-        7)
+        6)
             if [ $is_installed -eq 0 ]; then
                 set_ipv6_priority
             else
                 show_xray_config
             fi
             ;;
-        8)
+        7)
             if [ $is_installed -eq 0 ]; then
                 show_xray_config
             else
                 set_xray_ipv6_outbound
             fi
             ;;
-        9)
+        8)
             if [ $is_installed -eq 0 ]; then
                 set_xray_ipv6_outbound
             else
                 restore_xray_default
             fi
             ;;
-        10)
+        9)
             if [ $is_installed -eq 0 ]; then
                 restore_xray_default
             else
                 show_detailed_status
             fi
             ;;
-        11)
+        10)
             if [ $is_installed -eq 0 ]; then
                 show_detailed_status
             else
                 run_ns_detect
             fi
             ;;
-        12)
+        11)
             if [ $is_installed -eq 0 ]; then
                 run_ns_detect
             else
                 run_speedtest
             fi
             ;;
-        13)
+        12)
             if [ $is_installed -eq 0 ]; then
                 run_speedtest
             else
                 run_backtrace
             fi
             ;;
-        14)
+        13)
             if [ $is_installed -eq 0 ]; then
                 run_backtrace
             else
                 run_ip_quality_check
             fi
             ;;
-        15)
+        14)
             if [ $is_installed -eq 0 ]; then
                 run_ip_quality_check
             else
                 run_ip_quality_check_ipv4
             fi
             ;;
-        16)
+        15)
             if [ $is_installed -eq 0 ]; then
                 run_ip_quality_check_ipv4
             else
                 run_network_latency_check
             fi
             ;;
-        17)
+        16)
             if [ $is_installed -eq 0 ]; then
                 run_network_latency_check
             else
                 run_international_speed_test
             fi
             ;;
-        18)
+        17)
             if [ $is_installed -eq 0 ]; then
                 run_international_speed_test
             else
                 run_unlock_check
             fi
             ;;
-        19)
+        18)
             if [ $is_installed -eq 0 ]; then
                 run_unlock_check
             else
                 run_pf_realm
             fi
             ;;
-        20)
+        19)
             if [ $is_installed -eq 0 ]; then
                 run_pf_realm
             else
                 run_misaka_xray
             fi
             ;;
-        21)
+        20)
             if [ $is_installed -eq 0 ]; then
                 run_misaka_xray
             else
                 run_ns_cake
             fi
             ;;
-        22)
+        21)
             if [ $is_installed -eq 0 ]; then
                 run_ns_cake
             else
                 run_kxy_script
             fi
             ;;
-        23)
+        22)
             if [ $is_installed -eq 0 ]; then
                 run_kxy_script
             else
                 run_kejilion_script
             fi
             ;;
-        24)
+        23)
             if [ $is_installed -eq 0 ]; then
                 run_kejilion_script
             else
                 run_fscarmen_singbox
             fi
             ;;
-        25)
+        24)
             if [ $is_installed -eq 0 ]; then
                 run_fscarmen_singbox
             else
                 Kernel_optimize
             fi
             ;;
-        26)
+        25)
             if [ $is_installed -eq 0 ]; then
                 Kernel_optimize
             else
                 startbbrcake
             fi
             ;;
-        27)
+        26)
             if [ $is_installed -eq 0 ]; then
                 startbbrcake
             else
@@ -2475,7 +2277,17 @@ run_pf_realm() {
     echo ""
 
     # 执行 PF_realm 转发脚本
-    wget -qO- https://raw.githubusercontent.com/zywe03/realm-xwPF/main/xwPF.sh | sudo bash -s install
+    if wget -qO- https://raw.githubusercontent.com/zywe03/realm-xwPF/main/xwPF.sh | bash -s install; then
+        echo ""
+        echo -e "${gl_lv}✅ PF_realm 脚本执行完成${gl_bai}"
+    else
+        echo ""
+        echo -e "${gl_hong}❌ PF_realm 脚本执行失败${gl_bai}"
+        echo "可能原因："
+        echo "1. 网络连接问题（无法访问GitHub）"
+        echo "2. 脚本服务器不可用"
+        echo "3. 权限不足"
+    fi
 
     echo ""
     echo "------------------------------------------------"
@@ -2507,7 +2319,17 @@ run_misaka_xray() {
     echo ""
 
     # 执行御坂美琴一键双协议脚本
-    bash <(curl -L https://raw.githubusercontent.com/yahuisme/xray-dual/main/install.sh)
+    if bash <(curl -L https://raw.githubusercontent.com/yahuisme/xray-dual/main/install.sh); then
+        echo ""
+        echo -e "${gl_lv}✅ 御坂美琴一键双协议脚本执行完成${gl_bai}"
+    else
+        echo ""
+        echo -e "${gl_hong}❌ 御坂美琴一键双协议脚本执行失败${gl_bai}"
+        echo "可能原因："
+        echo "1. 网络连接问题（无法访问GitHub）"
+        echo "2. curl 命令不可用"
+        echo "3. 脚本执行过程中出错"
+    fi
 
     echo ""
     echo "------------------------------------------------"
@@ -2522,8 +2344,36 @@ run_ns_cake() {
     echo "------------------------------------------------"
     echo ""
 
+    # 切换到临时目录
+    cd /tmp || {
+        echo -e "${gl_hong}错误: 无法切换到 /tmp 目录${gl_bai}"
+        echo ""
+        echo "------------------------------------------------"
+        break_end
+        return 1
+    }
+
     # 执行 NS论坛 cake 调优脚本
-    wget -O tcpx.sh "https://github.com/ylx2016/Linux-NetSpeed/raw/master/tcpx.sh" && chmod +x tcpx.sh && ./tcpx.sh
+    if wget -O /tmp/tcpx.sh "https://github.com/ylx2016/Linux-NetSpeed/raw/master/tcpx.sh"; then
+        chmod +x /tmp/tcpx.sh
+        
+        if bash /tmp/tcpx.sh; then
+            echo ""
+            echo -e "${gl_lv}✅ NS论坛 cake 调优脚本执行完成${gl_bai}"
+        else
+            echo ""
+            echo -e "${gl_hong}❌ 脚本执行失败${gl_bai}"
+        fi
+        
+        # 清理临时文件
+        rm -f /tmp/tcpx.sh
+    else
+        echo ""
+        echo -e "${gl_hong}❌ 下载脚本失败${gl_bai}"
+        echo "可能原因："
+        echo "1. 网络连接问题（无法访问GitHub）"
+        echo "2. wget 命令不可用"
+    fi
 
     echo ""
     echo "------------------------------------------------"
