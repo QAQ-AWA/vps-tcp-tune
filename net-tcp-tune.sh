@@ -373,7 +373,8 @@ set_xray_ipv6_outbound() {
     fi
 
     echo "正在备份当前配置..."
-    cp /usr/local/etc/xray/config.json /usr/local/etc/xray/config.json.bak.$(date +%F-%H%M)
+    local backup_timestamp=$(date +%F-%H%M%S)
+    cp /usr/local/etc/xray/config.json /usr/local/etc/xray/config.json.bak.${backup_timestamp}
     echo -e "${gl_lv}✅ 配置已备份${gl_bai}"
     echo ""
 
@@ -398,7 +399,7 @@ set_xray_ipv6_outbound() {
         echo -e "${gl_lv}✅ Xray IPv6 出站配置完成！${gl_bai}"
     else
         echo -e "${gl_hong}❌ 配置测试失败，已回滚${gl_bai}"
-        mv /usr/local/etc/xray/config.json.bak.$(date +%F-%H%M) /usr/local/etc/xray/config.json
+        mv /usr/local/etc/xray/config.json.bak.${backup_timestamp} /usr/local/etc/xray/config.json
     fi
 
     echo ""
@@ -434,7 +435,8 @@ restore_xray_default() {
     fi
 
     echo "正在备份当前配置..."
-    cp /usr/local/etc/xray/config.json /usr/local/etc/xray/config.json.bak.$(date +%F-%H%M)
+    local backup_timestamp=$(date +%F-%H%M%S)
+    cp /usr/local/etc/xray/config.json /usr/local/etc/xray/config.json.bak.${backup_timestamp}
     echo -e "${gl_lv}✅ 配置已备份${gl_bai}"
     echo ""
 
@@ -458,7 +460,7 @@ restore_xray_default() {
         echo -e "${gl_lv}✅ Xray 默认配置已恢复！${gl_bai}"
     else
         echo -e "${gl_hong}❌ 配置测试失败，已回滚${gl_bai}"
-        mv /usr/local/etc/xray/config.json.bak.$(date +%F-%H%M) /usr/local/etc/xray/config.json
+        mv /usr/local/etc/xray/config.json.bak.${backup_timestamp} /usr/local/etc/xray/config.json
     fi
 
     echo ""
@@ -2783,12 +2785,8 @@ main() {
         install_xanmod_kernel
         if [ $? -eq 0 ]; then
             echo ""
-            echo "安装完成后，请重启并运行以下命令配置 BBR:"
-            echo "sudo $0 --configure"
+            echo "安装完成后，请重启系统以加载新内核"
         fi
-        exit 0
-    elif [ "$1" = "-c" ] || [ "$1" = "--configure" ]; then
-        configure_bbr_qdisc
         exit 0
     fi
     

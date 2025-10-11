@@ -1,9 +1,9 @@
 # BBR v3 终极优化脚本 - Ultimate Edition
 
 🚀 **XanMod 内核 + BBR v3 + 全方位 VPS 管理工具集**
-一键安装 XanMod 内核，启用 BBR v3 拥塞控制，集成 25+ 实用工具，全面优化你的 VPS 服务器。
+一键安装 XanMod 内核，启用 BBR v3 拥塞控制，集成 27+ 实用工具，全面优化你的 VPS 服务器。
 
-> **版本**: 2.5.2 (Script Collection Reorganization)
+> **版本**: 2.5.3 (SOCKS5 Proxy Deployment)
 > 
 > **快速上手**: [📖 快速使用指南](QUICK_START.md) | **视频教程**: [🎬 B站教程](https://www.bilibili.com/video/BV14K421x7BS)
 
@@ -101,7 +101,7 @@ chmod +x bbr.sh
 
 ## 🌟 核心特性
 
-### ✨ 八大功能模块
+### ✨ 九大功能模块
 
 1. **🔧 内核管理**
    - XanMod 内核安装/更新/卸载
@@ -144,7 +144,13 @@ chmod +x bbr.sh
    - 科技lion 脚本
    - F佬一键 sing-box 脚本
 
-8. **📋 系统信息**
+8. **🚀 代理部署**
+   - 一键部署 SOCKS5 代理服务
+   - 基于 Sing-box 独立部署
+   - 自动检测和配置
+   - 支持用户名密码认证
+
+9. **📋 系统信息**
    - 详细系统状态查询
    - CPU、内存、网络流量统计
    - 地理位置、运营商信息
@@ -181,10 +187,11 @@ chmod +x bbr.sh
 | **媒体/AI解锁** | 19 | 20 |
 | **PF_realm转发** | 20 | 21 |
 | **御坂美琴双协议** | 21 | 22 |
-| **NS论坛cake调优** | 22 | 23 |
-| **酷雪云脚本** | 23 | 24 |
-| **科技lion脚本** | 24 | 25 |
-| **F佬sing box** | 25 | 26 |
+| **F佬sing box** | 22 | 23 |
+| **科技lion脚本** | 23 | 24 |
+| **NS论坛cake调优** | 24 | 25 |
+| **酷雪云脚本** | 25 | 26 |
+| **部署SOCKS5代理** | 26 | 27 |
 
 ### [内核管理]
 - **未安装时**:
@@ -250,7 +257,8 @@ chmod +x bbr.sh
 **Xray配置**: 8-10 (未安装), 9-11 (已安装)  
 **系统信息**: 11 (未安装), 12 (已安装)  
 **服务器检测**: 12-19 (未安装), 13-20 (已安装)  
-**脚本合集**: 20-25 (未安装), 21-26 (已安装)
+**脚本合集**: 20-25 (未安装), 21-26 (已安装)  
+**代理部署**: 26 (未安装), 27 (已安装)
 
 ---
 
@@ -487,6 +495,88 @@ version:        3
 
 ---
 
+## 🚀 一键部署 SOCKS5 代理
+
+### 功能概述（选项 26（未安装）/27（已安装））
+
+基于 Sing-box 的独立 SOCKS5 代理服务，与主系统完全隔离，安全可靠。
+
+### 核心特性
+
+- ✅ **自动检测 Sing-box**：智能查找二进制程序，支持多种安装方式
+- ✅ **独立部署**：服务名 `sbox-socks5`，独立配置目录 `/etc/sbox_socks5`
+- ✅ **完整配置验证**：7步自动化部署流程，每步都有验证
+- ✅ **安全认证**：用户名密码双重认证
+- ✅ **智能端口**：支持随机生成或手动指定（1024-65535）
+- ✅ **systemd 管理**：开机自启，自动重启
+
+### 部署流程
+
+脚本会自动执行以下步骤：
+
+1. **检测 Sing-box 安装** - 查找二进制程序并验证
+2. **配置参数** - 设置端口、用户名、密码
+3. **创建目录** - `/etc/sbox_socks5` 独立配置目录
+4. **生成配置** - 创建 SOCKS5 配置文件
+5. **验证语法** - 使用 `sing-box check` 验证配置
+6. **创建服务** - systemd 服务文件 `sbox-socks5.service`
+7. **启动验证** - 自动启动并验证端口监听
+
+### 使用示例
+
+```bash
+# 1. 运行脚本
+bash <(wget -qO- https://raw.githubusercontent.com/Eric86777/vps-tcp-tune/main/net-tcp-tune.sh)
+
+# 2. 选择菜单选项
+# - 未安装XanMod: 选择 26
+# - 已安装XanMod: 选择 27
+
+# 3. 按提示输入配置
+端口: [回车随机] 或输入端口号
+用户名: your_username
+密码: your_password
+
+# 4. 部署完成后测试连接
+curl --socks5-hostname username:password@your_server_ip:port http://httpbin.org/ip
+```
+
+### 配置说明
+
+**配置文件位置**：
+- 主配置：`/etc/sbox_socks5/config.json`
+- 日志文件：`/etc/sbox_socks5/socks5.log`
+- 服务文件：`/etc/systemd/system/sbox-socks5.service`
+
+**服务管理命令**：
+```bash
+# 查看状态
+systemctl status sbox-socks5
+
+# 查看日志
+journalctl -u sbox-socks5 -f
+
+# 重启服务
+systemctl restart sbox-socks5
+
+# 停止服务
+systemctl stop sbox-socks5
+
+# 完全卸载
+systemctl stop sbox-socks5
+systemctl disable sbox-socks5
+rm -rf /etc/sbox_socks5 /etc/systemd/system/sbox-socks5.service
+```
+
+### 注意事项
+
+1. **前置要求**：需要先安装 Sing-box（推荐使用菜单中的"F佬一键sing box脚本"）
+2. **防火墙**：确保云服务商安全组已开放对应 TCP 端口
+3. **独立服务**：与其他 Sing-box 服务完全隔离，互不影响
+4. **端口冲突**：脚本会自动检测端口占用并提示
+
+---
+
 ## ⚙️ 科技lion高性能模式内核参数优化
 
 ### 系统内核参数优化（选项 3（未安装）/4（已安装））
@@ -709,6 +799,30 @@ MIT
 
 ## 📝 更新日志
 
+### v2.5.3 (2025-01-11) - SOCKS5 Proxy Deployment
+
+- 🚀 **新增一键部署 SOCKS5 代理功能**
+  - 基于 Sing-box 的独立 SOCKS5 代理服务
+  - 智能检测 Sing-box 二进制程序
+  - 7步自动化部署流程（检测→配置→验证→启动）
+  - 支持用户名密码认证
+  - 智能端口配置（随机生成或手动指定）
+  - 独立服务管理（sbox-socks5）
+  - **已安装XanMod**: 选项 27
+  - **未安装XanMod**: 选项 26
+
+- 🔧 **脚本执行错误修复**
+  - 删除无效的 `--configure` 快捷命令（函数不存在）
+  - 修复 Xray 配置备份时间戳不匹配问题
+  - 优化备份文件命名（使用变量保存时间戳）
+  - 确保配置失败回滚时能正确找到备份文件
+
+- 📋 **文档更新**
+  - 九大功能模块介绍（新增"代理部署"模块）
+  - 完整的 SOCKS5 部署说明文档
+  - 更新菜单对照表和快速定位指南
+  - 添加服务管理和卸载说明
+
 ### v2.5.2 (2025-01-11) - Script Collection Reorganization
 
 - 📂 **脚本合集顺序调整**
@@ -878,7 +992,7 @@ MIT
   - 全方位系统参数调优
   - 文件描述符、虚拟内存、网络设置优化
   - CPU、缓存管理优化
-- ✅ 总计 25 项实用功能
+- ✅ 总计 26 项实用功能
 
 ### v2.0 Ultimate Edition (2025-01-10)
 - ✅ 新增一键远程运行方式
@@ -891,7 +1005,7 @@ MIT
 - ✅ 优化配置冲突检测与清理
 - ✅ 新增立即生效功能（tc fq + MSS clamp）
 - ✅ 完善错误处理和回滚机制
-- ✅ 总计 24 项实用功能
+- ✅ 总计 25 项实用功能
 
 ---
 
