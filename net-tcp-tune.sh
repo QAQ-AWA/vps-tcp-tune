@@ -1872,10 +1872,10 @@ show_main_menu() {
         echo -e "${gl_kjlan}[脚本合集]${gl_bai}"
         echo "21. PF_realm转发脚本"
         echo "22. 御坂美琴一键双协议"
-        echo "23. NS论坛的cake调优"
-        echo "24. 酷雪云脚本"
-        echo "25. 科技lion脚本"
-        echo "26. F佬一键sing box脚本"
+        echo "23. F佬一键sing box脚本"
+        echo "24. 科技lion脚本"
+        echo "25. NS论坛的cake调优"
+        echo "26. 酷雪云脚本"
     else
         echo "1. 安装 XanMod 内核 + BBR v3"
         echo ""
@@ -1910,10 +1910,10 @@ show_main_menu() {
         echo -e "${gl_kjlan}[脚本合集]${gl_bai}"
         echo "20. PF_realm转发脚本"
         echo "21. 御坂美琴一键双协议"
-        echo "22. NS论坛的cake调优"
-        echo "23. 酷雪云脚本"
-        echo "24. 科技lion脚本"
-        echo "25. F佬一键sing box脚本"
+        echo "22. F佬一键sing box脚本"
+        echo "23. 科技lion脚本"
+        echo "24. NS论坛的cake调优"
+        echo "25. 酷雪云脚本"
     fi
     
     echo ""
@@ -2082,33 +2082,33 @@ show_main_menu() {
             if [ $is_installed -eq 0 ]; then
                 run_misaka_xray
             else
-                run_ns_cake
+                run_fscarmen_singbox
             fi
             ;;
         23)
             if [ $is_installed -eq 0 ]; then
+                run_fscarmen_singbox
+            else
+                run_kejilion_script
+            fi
+            ;;
+        24)
+            if [ $is_installed -eq 0 ]; then
+                run_kejilion_script
+            else
+                run_ns_cake
+            fi
+            ;;
+        25)
+            if [ $is_installed -eq 0 ]; then
                 run_ns_cake
             else
                 run_kxy_script
             fi
             ;;
-        24)
-            if [ $is_installed -eq 0 ]; then
-                run_kxy_script
-            else
-                run_kejilion_script
-            fi
-            ;;
-        25)
-            if [ $is_installed -eq 0 ]; then
-                run_kejilion_script
-            else
-                run_fscarmen_singbox
-            fi
-            ;;
         26)
             if [ $is_installed -eq 0 ]; then
-                run_fscarmen_singbox
+                run_kxy_script
             else
                 echo "无效选择"
                 sleep 2
