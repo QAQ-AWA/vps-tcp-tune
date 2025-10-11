@@ -1842,8 +1842,8 @@ show_main_menu() {
         echo "2. 卸载 XanMod 内核"
         echo ""
         echo -e "${gl_kjlan}[BBR TCP调优]${gl_bai}"
-        echo "3. Linux系统内核参数优化"
-        echo "4. 单独cake脚本"
+        echo "3. NS论坛CAKE调优"
+        echo "4. 科技lion高性能模式内核参数优化"
         echo "5. BBR 直连/落地优化（智能带宽检测）"
         echo ""
         echo -e "${gl_kjlan}[系统设置]${gl_bai}"
@@ -1880,8 +1880,8 @@ show_main_menu() {
         echo "1. 安装 XanMod 内核 + BBR v3"
         echo ""
         echo -e "${gl_kjlan}[BBR TCP调优]${gl_bai}"
-        echo "2. Linux系统内核参数优化"
-        echo "3. 单独cake脚本"
+        echo "2. NS论坛CAKE调优"
+        echo "3. 科技lion高性能模式内核参数优化"
         echo "4. BBR 直连/落地优化（智能带宽检测）"
         echo ""
         echo -e "${gl_kjlan}[系统设置]${gl_bai}"
@@ -1940,19 +1940,19 @@ show_main_menu() {
             if [ $is_installed -eq 0 ]; then
                 uninstall_xanmod
             else
-                Kernel_optimize
+                startbbrcake
             fi
             ;;
         3)
             if [ $is_installed -eq 0 ]; then
-                Kernel_optimize
-            else
                 startbbrcake
+            else
+                Kernel_optimize
             fi
             ;;
         4)
             if [ $is_installed -eq 0 ]; then
-                startbbrcake
+                Kernel_optimize
             else
                 bbr_configure_direct
                 break_end
