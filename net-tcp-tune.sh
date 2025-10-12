@@ -322,6 +322,433 @@ set_ipv6_priority() {
     break_end
 }
 
+set_temp_socks5_proxy() {
+    clear
+    echo -e "${gl_kjlan}=== 设置临时SOCKS5代理 ===${gl_bai}"
+    echo ""
+    echo "此代理配置仅对当前终端会话有效，重启后自动失效"
+    echo "------------------------------------------------"
+    echo ""
+    
+    # 输入代理服务器IP
+    local proxy_ip=""
+    while true; do
+        read -e -p "$(echo -e "${gl_huang}请输入代理服务器IP: ${gl_bai}")" proxy_ip
+        
+        if [ -z "$proxy_ip" ]; then
+            echo -e "${gl_hong}❌ IP地址不能为空${gl_bai}"
+        elif [[ "$proxy_ip" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]]; then
+            # 简单的IP格式验证
+            echo -e "${gl_lv}✅ IP地址: ${proxy_ip}${gl_bai}"
+            break
+        else
+            echo -e "${gl_hong}❌ 无效的IP地址格式${gl_bai}"
+        fi
+    done
+    
+    echo ""
+    
+    # 输入端口
+    local proxy_port=""
+    while true; do
+        read -e -p "$(echo -e "${gl_huang}请输入端口: ${gl_bai}")" proxy_port
+        
+        if [ -z "$proxy_port" ]; then
+            echo -e "${gl_hong}❌ 端口不能为空${gl_bai}"
+        elif [[ "$proxy_port" =~ ^[0-9]+$ ]] && [ "$proxy_port" -ge 1 ] && [ "$proxy_port" -le 65535 ]; then
+            echo -e "${gl_lv}✅ 端口: ${proxy_port}${gl_bai}"
+            break
+        else
+            echo -e "${gl_hong}❌ 无效端口，请输入 1-65535 之间的数字${gl_bai}"
+        fi
+    done
+    
+    echo ""
+    
+    # 输入用户名（可选）
+    local proxy_user=""
+    read -e -p "$(echo -e "${gl_huang}请输入用户名（留空跳过）: ${gl_bai}")" proxy_user
+    
+    if [ -n "$proxy_user" ]; then
+        echo -e "${gl_lv}✅ 用户名: ${proxy_user}${gl_bai}"
+    else
+        echo -e "${gl_zi}未设置用户名（无认证模式）${gl_bai}"
+    fi
+    
+    echo ""
+    
+    # 输入密码（可选）
+    local proxy_pass=""
+    if [ -n "$proxy_user" ]; then
+        read -e -p "$(echo -e "${gl_huang}请输入密码: ${gl_bai}")" proxy_pass
+        
+        if [ -n "$proxy_pass" ]; then
+            echo -e "${gl_lv}✅ 密码已设置${gl_bai}"
+        else
+            echo -e "${gl_huang}⚠️  密码为空${gl_bai}"
+        fi
+    fi
+    
+    # 生成代理URL
+    local proxy_url=""
+    if [ -n "$proxy_user" ] && [ -n "$proxy_pass" ]; then
+        proxy_url="socks5://${proxy_user}:${proxy_pass}@${proxy_ip}:${proxy_port}"
+    elif [ -n "$proxy_user" ]; then
+        proxy_url="socks5://${proxy_user}@${proxy_ip}:${proxy_port}"
+    else
+        proxy_url="socks5://${proxy_ip}:${proxy_port}"
+    fi
+    
+    # 生成临时配置文件
+    local timestamp=$(date +%Y%m%d_%H%M%S)
+    local config_file="/tmp/socks5_proxy_${timestamp}.sh"
+    
+    cat > "$config_file" << PROXYEOF
+#!/bin/bash
+# SOCKS5 代理配置 - 生成于 $(date '+%Y-%m-%d %H:%M:%S')
+# 此配置仅对当前终端会话有效
+
+export http_proxy="${proxy_url}"
+export https_proxy="${proxy_url}"
+export all_proxy="${proxy_url}"
+
+echo "SOCKS5 代理已启用："
+echo "  服务器: ${proxy_ip}:${proxy_port}"
+echo "  http_proxy=${proxy_url}"
+echo "  https_proxy=${proxy_url}"
+echo "  all_proxy=${proxy_url}"
+PROXYEOF
+    
+    chmod +x "$config_file"
+    
+    echo ""
+    echo -e "${gl_kjlan}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${gl_bai}"
+    echo -e "${gl_lv}✅ 代理配置文件已生成！${gl_bai}"
+    echo -e "${gl_kjlan}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${gl_bai}"
+    echo ""
+    echo -e "${gl_huang}使用方法：${gl_bai}"
+    echo ""
+    echo -e "1. ${gl_lv}应用代理配置：${gl_bai}"
+    echo "   source ${config_file}"
+    echo ""
+    echo -e "2. ${gl_lv}测试代理是否生效：${gl_bai}"
+    echo "   curl ip.sb"
+    echo "   （应该显示代理服务器的IP地址）"
+    echo ""
+    echo -e "3. ${gl_lv}取消代理：${gl_bai}"
+    echo "   unset http_proxy https_proxy all_proxy"
+    echo ""
+    echo -e "${gl_zi}注意事项：${gl_bai}"
+    echo "  - 此配置仅对执行 source 命令的终端会话有效"
+    echo "  - 关闭终端或重启系统后代理自动失效"
+    echo "  - 配置文件保存在 /tmp 目录，重启后会被清除"
+    echo ""
+    echo -e "${gl_kjlan}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${gl_bai}"
+    echo ""
+    
+    break_end
+}
+
+disable_ipv6_temporary() {
+    clear
+    echo -e "${gl_kjlan}=== 临时禁用IPv6 ===${gl_bai}"
+    echo ""
+    echo "此操作将临时禁用IPv6，重启后自动恢复"
+    echo "------------------------------------------------"
+    echo ""
+    
+    read -e -p "$(echo -e "${gl_huang}确认临时禁用IPv6？(Y/N): ${gl_bai}")" confirm
+    
+    case "$confirm" in
+        [Yy])
+            echo ""
+            echo "正在禁用IPv6..."
+            
+            # 临时禁用IPv6
+            sysctl -w net.ipv6.conf.all.disable_ipv6=1 >/dev/null 2>&1
+            sysctl -w net.ipv6.conf.default.disable_ipv6=1 >/dev/null 2>&1
+            sysctl -w net.ipv6.conf.lo.disable_ipv6=1 >/dev/null 2>&1
+            
+            # 验证状态
+            local ipv6_status=$(sysctl -n net.ipv6.conf.all.disable_ipv6 2>/dev/null)
+            
+            echo ""
+            if [ "$ipv6_status" = "1" ]; then
+                echo -e "${gl_lv}✅ IPv6 已临时禁用${gl_bai}"
+                echo ""
+                echo -e "${gl_zi}注意：${gl_bai}"
+                echo "  - 此设置仅在当前会话有效"
+                echo "  - 重启后 IPv6 将自动恢复"
+                echo "  - 如需永久禁用，请选择'永久禁用IPv6'选项"
+            else
+                echo -e "${gl_hong}❌ IPv6 禁用失败${gl_bai}"
+            fi
+            ;;
+        *)
+            echo "已取消"
+            ;;
+    esac
+    
+    echo ""
+    break_end
+}
+
+disable_ipv6_permanent() {
+    clear
+    echo -e "${gl_kjlan}=== 永久禁用IPv6 ===${gl_bai}"
+    echo ""
+    echo "此操作将永久禁用IPv6，重启后仍然生效"
+    echo "------------------------------------------------"
+    echo ""
+    
+    # 检查是否已经永久禁用
+    if [ -f /etc/sysctl.d/99-disable-ipv6.conf ]; then
+        echo -e "${gl_huang}⚠️  检测到已存在永久禁用配置${gl_bai}"
+        echo ""
+        read -e -p "$(echo -e "${gl_huang}是否重新执行永久禁用？(Y/N): ${gl_bai}")" confirm
+        
+        case "$confirm" in
+            [Yy])
+                ;;
+            *)
+                echo "已取消"
+                break_end
+                return 1
+                ;;
+        esac
+    fi
+    
+    echo ""
+    read -e -p "$(echo -e "${gl_huang}确认永久禁用IPv6？(Y/N): ${gl_bai}")" confirm
+    
+    case "$confirm" in
+        [Yy])
+            echo ""
+            echo -e "${gl_zi}[步骤 1/3] 备份当前IPv6状态...${gl_bai}"
+            
+            # 读取当前IPv6状态并备份
+            local ipv6_all=$(sysctl -n net.ipv6.conf.all.disable_ipv6 2>/dev/null || echo "0")
+            local ipv6_default=$(sysctl -n net.ipv6.conf.default.disable_ipv6 2>/dev/null || echo "0")
+            local ipv6_lo=$(sysctl -n net.ipv6.conf.lo.disable_ipv6 2>/dev/null || echo "0")
+            
+            # 创建备份文件
+            cat > /etc/sysctl.d/.ipv6-state-backup.conf << BACKUPEOF
+# IPv6 State Backup - Created on $(date '+%Y-%m-%d %H:%M:%S')
+# This file is used to restore IPv6 state when canceling permanent disable
+net.ipv6.conf.all.disable_ipv6=${ipv6_all}
+net.ipv6.conf.default.disable_ipv6=${ipv6_default}
+net.ipv6.conf.lo.disable_ipv6=${ipv6_lo}
+BACKUPEOF
+            
+            echo -e "${gl_lv}✅ 状态已备份${gl_bai}"
+            echo ""
+            
+            echo -e "${gl_zi}[步骤 2/3] 创建永久禁用配置...${gl_bai}"
+            
+            # 创建永久禁用配置文件
+            cat > /etc/sysctl.d/99-disable-ipv6.conf << EOF
+# Permanently Disable IPv6
+net.ipv6.conf.all.disable_ipv6 = 1
+net.ipv6.conf.default.disable_ipv6 = 1
+net.ipv6.conf.lo.disable_ipv6 = 1
+EOF
+            
+            echo -e "${gl_lv}✅ 配置文件已创建${gl_bai}"
+            echo ""
+            
+            echo -e "${gl_zi}[步骤 3/3] 应用配置...${gl_bai}"
+            
+            # 应用配置
+            sysctl --system >/dev/null 2>&1
+            
+            # 验证状态
+            local ipv6_status=$(sysctl -n net.ipv6.conf.all.disable_ipv6 2>/dev/null)
+            
+            echo ""
+            if [ "$ipv6_status" = "1" ]; then
+                echo -e "${gl_lv}✅ IPv6 已永久禁用${gl_bai}"
+                echo ""
+                echo -e "${gl_zi}说明：${gl_bai}"
+                echo "  - 配置文件: /etc/sysctl.d/99-disable-ipv6.conf"
+                echo "  - 备份文件: /etc/sysctl.d/.ipv6-state-backup.conf"
+                echo "  - 重启后此配置仍然生效"
+                echo "  - 如需恢复，请选择'取消永久禁用'选项"
+            else
+                echo -e "${gl_hong}❌ IPv6 禁用失败${gl_bai}"
+                # 如果失败，删除配置文件
+                rm -f /etc/sysctl.d/99-disable-ipv6.conf
+                rm -f /etc/sysctl.d/.ipv6-state-backup.conf
+            fi
+            ;;
+        *)
+            echo "已取消"
+            ;;
+    esac
+    
+    echo ""
+    break_end
+}
+
+cancel_ipv6_permanent_disable() {
+    clear
+    echo -e "${gl_kjlan}=== 取消永久禁用IPv6 ===${gl_bai}"
+    echo ""
+    echo "此操作将完全还原到执行永久禁用前的状态"
+    echo "------------------------------------------------"
+    echo ""
+    
+    # 检查是否存在永久禁用配置
+    if [ ! -f /etc/sysctl.d/99-disable-ipv6.conf ]; then
+        echo -e "${gl_huang}⚠️  未检测到永久禁用配置${gl_bai}"
+        echo ""
+        echo "可能原因："
+        echo "  - 从未执行过'永久禁用IPv6'操作"
+        echo "  - 配置文件已被手动删除"
+        echo ""
+        break_end
+        return 1
+    fi
+    
+    read -e -p "$(echo -e "${gl_huang}确认取消永久禁用并恢复原始状态？(Y/N): ${gl_bai}")" confirm
+    
+    case "$confirm" in
+        [Yy])
+            echo ""
+            echo -e "${gl_zi}[步骤 1/4] 删除永久禁用配置...${gl_bai}"
+            
+            # 删除永久禁用配置文件
+            rm -f /etc/sysctl.d/99-disable-ipv6.conf
+            echo -e "${gl_lv}✅ 配置文件已删除${gl_bai}"
+            echo ""
+            
+            echo -e "${gl_zi}[步骤 2/4] 检查备份文件...${gl_bai}"
+            
+            # 检查备份文件
+            if [ -f /etc/sysctl.d/.ipv6-state-backup.conf ]; then
+                echo -e "${gl_lv}✅ 找到备份文件${gl_bai}"
+                echo ""
+                
+                echo -e "${gl_zi}[步骤 3/4] 从备份还原原始状态...${gl_bai}"
+                
+                # 读取备份的原始值
+                local backup_all=$(grep 'net.ipv6.conf.all.disable_ipv6' /etc/sysctl.d/.ipv6-state-backup.conf | awk -F'=' '{print $2}')
+                local backup_default=$(grep 'net.ipv6.conf.default.disable_ipv6' /etc/sysctl.d/.ipv6-state-backup.conf | awk -F'=' '{print $2}')
+                local backup_lo=$(grep 'net.ipv6.conf.lo.disable_ipv6' /etc/sysctl.d/.ipv6-state-backup.conf | awk -F'=' '{print $2}')
+                
+                # 恢复原始值
+                sysctl -w net.ipv6.conf.all.disable_ipv6=${backup_all} >/dev/null 2>&1
+                sysctl -w net.ipv6.conf.default.disable_ipv6=${backup_default} >/dev/null 2>&1
+                sysctl -w net.ipv6.conf.lo.disable_ipv6=${backup_lo} >/dev/null 2>&1
+                
+                # 删除备份文件
+                rm -f /etc/sysctl.d/.ipv6-state-backup.conf
+                
+                echo -e "${gl_lv}✅ 已从备份还原原始状态${gl_bai}"
+            else
+                echo -e "${gl_huang}⚠️  未找到备份文件${gl_bai}"
+                echo ""
+                
+                echo -e "${gl_zi}[步骤 3/4] 恢复到系统默认（启用IPv6）...${gl_bai}"
+                
+                # 恢复到系统默认（启用IPv6）
+                sysctl -w net.ipv6.conf.all.disable_ipv6=0 >/dev/null 2>&1
+                sysctl -w net.ipv6.conf.default.disable_ipv6=0 >/dev/null 2>&1
+                sysctl -w net.ipv6.conf.lo.disable_ipv6=0 >/dev/null 2>&1
+                
+                echo -e "${gl_lv}✅ 已恢复到系统默认（IPv6启用）${gl_bai}"
+            fi
+            
+            echo ""
+            echo -e "${gl_zi}[步骤 4/4] 应用配置...${gl_bai}"
+            
+            # 应用配置
+            sysctl --system >/dev/null 2>&1
+            
+            # 验证状态
+            local ipv6_status=$(sysctl -n net.ipv6.conf.all.disable_ipv6 2>/dev/null)
+            
+            echo ""
+            if [ "$ipv6_status" = "0" ]; then
+                echo -e "${gl_lv}✅ IPv6 已恢复启用${gl_bai}"
+                echo ""
+                echo -e "${gl_zi}说明：${gl_bai}"
+                echo "  - 所有相关配置文件已清理"
+                echo "  - IPv6 已完全恢复到执行永久禁用前的状态"
+                echo "  - 重启后此状态依然保持"
+            else
+                echo -e "${gl_huang}⚠️  IPv6 状态: 禁用（值=${ipv6_status}）${gl_bai}"
+                echo ""
+                echo "可能原因："
+                echo "  - 系统中存在其他IPv6禁用配置"
+                echo "  - 手动执行 sysctl -w 命令重新启用IPv6"
+            fi
+            ;;
+        *)
+            echo "已取消"
+            ;;
+    esac
+    
+    echo ""
+    break_end
+}
+
+manage_ipv6() {
+    while true; do
+        clear
+        echo -e "${gl_kjlan}=== IPv6 管理 ===${gl_bai}"
+        echo ""
+        
+        # 显示当前IPv6状态
+        local ipv6_status=$(sysctl -n net.ipv6.conf.all.disable_ipv6 2>/dev/null)
+        local status_text=""
+        local status_color=""
+        
+        if [ "$ipv6_status" = "0" ]; then
+            status_text="启用"
+            status_color="${gl_lv}"
+        else
+            status_text="禁用"
+            status_color="${gl_hong}"
+        fi
+        
+        echo -e "当前状态: ${status_color}${status_text}${gl_bai}"
+        echo ""
+        
+        # 检查是否存在永久禁用配置
+        if [ -f /etc/sysctl.d/99-disable-ipv6.conf ]; then
+            echo -e "${gl_huang}⚠️  检测到永久禁用配置文件${gl_bai}"
+            echo ""
+        fi
+        
+        echo "------------------------------------------------"
+        echo "1. 临时禁用IPv6（重启后恢复）"
+        echo "2. 永久禁用IPv6（重启后仍生效）"
+        echo "3. 取消永久禁用（完全还原）"
+        echo "0. 返回主菜单"
+        echo "------------------------------------------------"
+        read -e -p "请输入选择: " choice
+        
+        case "$choice" in
+            1)
+                disable_ipv6_temporary
+                ;;
+            2)
+                disable_ipv6_permanent
+                ;;
+            3)
+                cancel_ipv6_permanent_disable
+                ;;
+            0)
+                return
+                ;;
+            *)
+                echo "无效选择"
+                sleep 2
+                ;;
+        esac
+    done
+}
+
 show_xray_config() {
     clear
     echo -e "${gl_kjlan}=== 查看 Xray 配置 ===${gl_bai}"
@@ -1850,37 +2277,39 @@ show_main_menu() {
         echo ""
         echo -e "${gl_kjlan}[系统设置]${gl_bai}"
         echo "6. 虚拟内存管理"
-        echo "7. 设置IPv4优先"
-        echo "8. 设置IPv6优先"
+        echo "7. IPv6管理（临时/永久禁用/取消）"
+        echo "8. 设置临时SOCKS5代理"
+        echo "9. 设置IPv4优先"
+        echo "10. 设置IPv6优先"
         echo ""
         echo -e "${gl_kjlan}[Xray配置]${gl_bai}"
-        echo "9. 查看Xray配置"
-        echo "10. 设置Xray IPv6出站"
-        echo "11. 恢复Xray默认配置"
+        echo "11. 查看Xray配置"
+        echo "12. 设置Xray IPv6出站"
+        echo "13. 恢复Xray默认配置"
         echo ""
         echo -e "${gl_kjlan}[系统信息]${gl_bai}"
-        echo "12. 查看详细状态"
+        echo "14. 查看详细状态"
         echo ""
         echo -e "${gl_kjlan}[服务器检测合集]${gl_bai}"
-        echo "13. NS一键检测脚本"
-        echo "14. 服务器带宽测试"
-        echo "15. 三网回程路由测试"
-        echo "16. IP质量检测"
-        echo "17. IP质量检测-仅IPv4"
-        echo "18. 网络延迟质量检测"
-        echo "19. 国际互联速度测试"
-        echo "20. IP媒体/AI解锁检测"
+        echo "15. NS一键检测脚本"
+        echo "16. 服务器带宽测试"
+        echo "17. 三网回程路由测试"
+        echo "18. IP质量检测"
+        echo "19. IP质量检测-仅IPv4"
+        echo "20. 网络延迟质量检测"
+        echo "21. 国际互联速度测试"
+        echo "22. IP媒体/AI解锁检测"
         echo ""
         echo -e "${gl_kjlan}[脚本合集]${gl_bai}"
-        echo "21. PF_realm转发脚本"
-        echo "22. 御坂美琴一键双协议"
-        echo "23. F佬一键sing box脚本"
-        echo "24. 科技lion脚本"
-        echo "25. NS论坛的cake调优"
-        echo "26. 酷雪云脚本"
+        echo "23. PF_realm转发脚本"
+        echo "24. 御坂美琴一键双协议"
+        echo "25. F佬一键sing box脚本"
+        echo "26. 科技lion脚本"
+        echo "27. NS论坛的cake调优"
+        echo "28. 酷雪云脚本"
         echo ""
         echo -e "${gl_kjlan}[代理部署]${gl_bai}"
-        echo "27. 一键部署SOCKS5代理"
+        echo "29. 一键部署SOCKS5代理"
     else
         echo "1. 安装 XanMod 内核 + BBR v3"
         echo ""
@@ -1891,37 +2320,39 @@ show_main_menu() {
         echo ""
         echo -e "${gl_kjlan}[系统设置]${gl_bai}"
         echo "5. 虚拟内存管理"
-        echo "6. 设置IPv4优先"
-        echo "7. 设置IPv6优先"
+        echo "6. IPv6管理（临时/永久禁用/取消）"
+        echo "7. 设置临时SOCKS5代理"
+        echo "8. 设置IPv4优先"
+        echo "9. 设置IPv6优先"
         echo ""
         echo -e "${gl_kjlan}[Xray配置]${gl_bai}"
-        echo "8. 查看Xray配置"
-        echo "9. 设置Xray IPv6出站"
-        echo "10. 恢复Xray默认配置"
+        echo "10. 查看Xray配置"
+        echo "11. 设置Xray IPv6出站"
+        echo "12. 恢复Xray默认配置"
         echo ""
         echo -e "${gl_kjlan}[系统信息]${gl_bai}"
-        echo "11. 查看详细状态"
+        echo "13. 查看详细状态"
         echo ""
         echo -e "${gl_kjlan}[服务器检测合集]${gl_bai}"
-        echo "12. NS一键检测脚本"
-        echo "13. 服务器带宽测试"
-        echo "14. 三网回程路由测试"
-        echo "15. IP质量检测"
-        echo "16. IP质量检测-仅IPv4"
-        echo "17. 网络延迟质量检测"
-        echo "18. 国际互联速度测试"
-        echo "19. IP媒体/AI解锁检测"
+        echo "14. NS一键检测脚本"
+        echo "15. 服务器带宽测试"
+        echo "16. 三网回程路由测试"
+        echo "17. IP质量检测"
+        echo "18. IP质量检测-仅IPv4"
+        echo "19. 网络延迟质量检测"
+        echo "20. 国际互联速度测试"
+        echo "21. IP媒体/AI解锁检测"
         echo ""
         echo -e "${gl_kjlan}[脚本合集]${gl_bai}"
-        echo "20. PF_realm转发脚本"
-        echo "21. 御坂美琴一键双协议"
-        echo "22. F佬一键sing box脚本"
-        echo "23. 科技lion脚本"
-        echo "24. NS论坛的cake调优"
-        echo "25. 酷雪云脚本"
+        echo "22. PF_realm转发脚本"
+        echo "23. 御坂美琴一键双协议"
+        echo "24. F佬一键sing box脚本"
+        echo "25. 科技lion脚本"
+        echo "26. NS论坛的cake调优"
+        echo "27. 酷雪云脚本"
         echo ""
         echo -e "${gl_kjlan}[代理部署]${gl_bai}"
-        echo "26. 一键部署SOCKS5代理"
+        echo "28. 一键部署SOCKS5代理"
     fi
     
     echo ""
@@ -1978,150 +2409,164 @@ show_main_menu() {
             if [ $is_installed -eq 0 ]; then
                 manage_swap
             else
-                set_ipv4_priority
+                manage_ipv6
             fi
             ;;
         7)
+            if [ $is_installed -eq 0 ]; then
+                manage_ipv6
+            else
+                set_temp_socks5_proxy
+            fi
+            ;;
+        8)
+            if [ $is_installed -eq 0 ]; then
+                set_temp_socks5_proxy
+            else
+                set_ipv4_priority
+            fi
+            ;;
+        9)
             if [ $is_installed -eq 0 ]; then
                 set_ipv4_priority
             else
                 set_ipv6_priority
             fi
             ;;
-        8)
+        10)
             if [ $is_installed -eq 0 ]; then
                 set_ipv6_priority
             else
                 show_xray_config
             fi
             ;;
-        9)
+        11)
             if [ $is_installed -eq 0 ]; then
                 show_xray_config
             else
                 set_xray_ipv6_outbound
             fi
             ;;
-        10)
+        12)
             if [ $is_installed -eq 0 ]; then
                 set_xray_ipv6_outbound
             else
                 restore_xray_default
             fi
             ;;
-        11)
+        13)
             if [ $is_installed -eq 0 ]; then
                 restore_xray_default
             else
                 show_detailed_status
             fi
             ;;
-        12)
+        14)
             if [ $is_installed -eq 0 ]; then
                 show_detailed_status
             else
                 run_ns_detect
             fi
             ;;
-        13)
+        15)
             if [ $is_installed -eq 0 ]; then
                 run_ns_detect
             else
                 run_speedtest
             fi
             ;;
-        14)
+        16)
             if [ $is_installed -eq 0 ]; then
                 run_speedtest
             else
                 run_backtrace
             fi
             ;;
-        15)
+        17)
             if [ $is_installed -eq 0 ]; then
                 run_backtrace
             else
                 run_ip_quality_check
             fi
             ;;
-        16)
+        18)
             if [ $is_installed -eq 0 ]; then
                 run_ip_quality_check
             else
                 run_ip_quality_check_ipv4
             fi
             ;;
-        17)
+        19)
             if [ $is_installed -eq 0 ]; then
                 run_ip_quality_check_ipv4
             else
                 run_network_latency_check
             fi
             ;;
-        18)
+        20)
             if [ $is_installed -eq 0 ]; then
                 run_network_latency_check
             else
                 run_international_speed_test
             fi
             ;;
-        19)
+        21)
             if [ $is_installed -eq 0 ]; then
                 run_international_speed_test
             else
                 run_unlock_check
             fi
             ;;
-        20)
+        22)
             if [ $is_installed -eq 0 ]; then
                 run_unlock_check
             else
                 run_pf_realm
             fi
             ;;
-        21)
+        23)
             if [ $is_installed -eq 0 ]; then
                 run_pf_realm
             else
                 run_misaka_xray
             fi
             ;;
-        22)
+        24)
             if [ $is_installed -eq 0 ]; then
                 run_misaka_xray
             else
                 run_fscarmen_singbox
             fi
             ;;
-        23)
+        25)
             if [ $is_installed -eq 0 ]; then
                 run_fscarmen_singbox
             else
                 run_kejilion_script
             fi
             ;;
-        24)
+        26)
             if [ $is_installed -eq 0 ]; then
                 run_kejilion_script
             else
                 run_ns_cake
             fi
             ;;
-        25)
+        27)
             if [ $is_installed -eq 0 ]; then
                 run_ns_cake
             else
                 run_kxy_script
             fi
             ;;
-        26)
+        28)
             if [ $is_installed -eq 0 ]; then
                 run_kxy_script
             else
                 deploy_socks5
             fi
             ;;
-        27)
+        29)
             if [ $is_installed -eq 0 ]; then
                 deploy_socks5
             else
