@@ -839,8 +839,8 @@ analyze_realm_connections() {
             ipv4_total=$((ipv4_total + conn_count))
         fi
         
-        # 获取本地监听端口
-        local local_port=$(echo "$realm_connections" | grep "${source_ip}" | awk '{print $4}' | cut -d: -f2 | head -1)
+        # 获取本地监听端口（兼容 IPv4 和 IPv6 映射格式）
+        local local_port=$(echo "$realm_connections" | grep "${source_ip}" | awk '{print $4}' | sed 's/.*[:\]]//' | head -1)
         
         # IP归属查询（简化版，避免过多API调用）
         local ip_info=""
