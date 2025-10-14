@@ -749,6 +749,220 @@ manage_ipv6() {
     done
 }
 
+#=============================================================================
+# IPv4/IPv6 连接检测工具
+#=============================================================================
+
+# 出站连接检测
+check_outbound_connections() {
+    local target_ipv4="$1"
+    local target_ipv6="$2"
+    
+    clear
+    echo -e "${gl_kjlan}=========================================="
+    echo "出站连接检测 - 本机到目标服务器"
+    echo -e "==========================================${gl_bai}"
+    echo ""
+    echo -e "目标IPv4: ${gl_huang}${target_ipv4}${gl_bai}"
+    echo -e "目标IPv6: ${gl_huang}${target_ipv6}${gl_bai}"
+    echo ""
+    
+    echo -e "${gl_zi}【1/4】IPv4连接数：${gl_bai}"
+    local ipv4_count=$(ss -4 -tn 2>/dev/null | grep -c "$target_ipv4" || echo "0")
+    echo "$ipv4_count"
+    
+    echo ""
+    echo -e "${gl_zi}【2/4】IPv6连接数（应该是0）：${gl_bai}"
+    local ipv6_count=$(ss -6 -tn 2>/dev/null | grep -c "$target_ipv6" || echo "0")
+    echo "$ipv6_count"
+    
+    echo ""
+    echo -e "${gl_zi}【3/4】连接详情（前5条）：${gl_bai}"
+    ss -tn 2>/dev/null | grep -E "($target_ipv4|$target_ipv6)" | head -5
+    
+    echo ""
+    echo -e "${gl_zi}【4/4】最终判断：${gl_bai}"
+    echo -e "IPv4连接: ${gl_lv}$ipv4_count${gl_bai} 个"
+    echo -e "IPv6连接: ${gl_hong}$ipv6_count${gl_bai} 个"
+    
+    echo ""
+    if [ "$ipv4_count" -gt 0 ] && [ "$ipv6_count" -eq 0 ]; then
+        echo -e "${gl_lv}✓✓✓ 结论：100% 使用 IPv4 链路 ✓✓✓${gl_bai}"
+    elif [ "$ipv6_count" -gt 0 ]; then
+        echo -e "${gl_hong}⚠️ 警告：检测到 IPv6 连接！${gl_bai}"
+    else
+        echo -e "${gl_huang}当前无活动连接${gl_bai}"
+    fi
+    
+    echo ""
+    break_end
+}
+
+# 入站连接检测
+check_inbound_connections() {
+    local source_ipv4="$1"
+    local source_ipv6="$2"
+    
+    clear
+    echo -e "${gl_kjlan}=========================================="
+    echo "入站连接检测 - 来自源服务器的连接"
+    echo -e "==========================================${gl_bai}"
+    echo ""
+    echo -e "源IPv4: ${gl_huang}${source_ipv4}${gl_bai}"
+    echo -e "源IPv6: ${gl_huang}${source_ipv6}${gl_bai}"
+    echo ""
+    
+    echo -e "${gl_zi}【1/5】查看所有established连接（前10条）：${gl_bai}"
+    ss -tn state established 2>/dev/null | head -11
+    
+    echo ""
+    echo -e "${gl_zi}【2/5】查看所有包含源 IPv4 的连接：${gl_bai}"
+    local ipv4_result=$(ss -tn 2>/dev/null | grep "$source_ipv4")
+    if [ -n "$ipv4_result" ]; then
+        echo "$ipv4_result"
+    else
+        echo "无连接"
+    fi
+    
+    echo ""
+    echo -e "${gl_zi}【3/5】统计来自源服务器的连接数：${gl_bai}"
+    local ipv4_conn_count=$(ss -tn state established 2>/dev/null | grep -c "$source_ipv4" || echo "0")
+    local ipv6_conn_count=$(ss -tn state established 2>/dev/null | grep -c "$source_ipv6" || echo "0")
+    echo -e "来自 ${gl_lv}${source_ipv4}${gl_bai} 的连接: ${gl_lv}$ipv4_conn_count${gl_bai} 个"
+    echo -e "来自 ${gl_hong}${source_ipv6}${gl_bai} 的连接: ${gl_hong}$ipv6_conn_count${gl_bai} 个"
+    
+    echo ""
+    echo -e "${gl_zi}【4/5】查看监听的端口（前5个）：${gl_bai}"
+    ss -tln 2>/dev/null | grep LISTEN | head -5
+    
+    echo ""
+    echo -e "${gl_zi}【5/5】查看所有入站连接（按源IP统计，前10个）：${gl_bai}"
+    ss -tn state established 2>/dev/null | awk '{print $4}' | grep -v "Peer" | cut -d: -f1 | sort | uniq -c | sort -rn | head -10
+    
+    echo ""
+    echo -e "${gl_kjlan}==========================================${gl_bai}"
+    echo -e "${gl_zi}最终判断：${gl_bai}"
+    if [ "$ipv4_conn_count" -gt 0 ] && [ "$ipv6_conn_count" -eq 0 ]; then
+        echo -e "${gl_lv}✓✓✓ 结论：100% 使用 IPv4 链路 ✓✓✓${gl_bai}"
+    elif [ "$ipv6_conn_count" -gt 0 ]; then
+        echo -e "${gl_hong}⚠️ 警告：检测到 IPv6 连接！${gl_bai}"
+    else
+        echo -e "${gl_huang}当前无活动连接${gl_bai}"
+    fi
+    echo -e "${gl_kjlan}==========================================${gl_bai}"
+    
+    echo ""
+    break_end
+}
+
+# IPv4/IPv6 连接检测主菜单
+check_ipv4v6_connections() {
+    while true; do
+        clear
+        echo -e "${gl_kjlan}=== IPv4/IPv6 连接检测工具 ===${gl_bai}"
+        echo ""
+        echo "此工具用于检测网络连接使用的是IPv4还是IPv6"
+        echo "------------------------------------------------"
+        echo "1. 出站检测（检测本机到目标服务器的连接）"
+        echo "2. 入站检测（检测来自源服务器的连接）"
+        echo "0. 返回主菜单"
+        echo "------------------------------------------------"
+        read -e -p "请输入选择: " choice
+        
+        case "$choice" in
+            1)
+                # 出站检测
+                clear
+                echo -e "${gl_kjlan}=== 出站连接检测 ===${gl_bai}"
+                echo ""
+                echo "请输入目标服务器的IP地址"
+                echo "------------------------------------------------"
+                
+                # 输入目标IPv4地址（必填）
+                local target_ipv4=""
+                while true; do
+                    read -e -p "$(echo -e "${gl_huang}目标服务器 IPv4 地址: ${gl_bai}")" target_ipv4
+                    
+                    if [ -z "$target_ipv4" ]; then
+                        echo -e "${gl_hong}❌ IPv4地址不能为空${gl_bai}"
+                    elif [[ "$target_ipv4" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]]; then
+                        echo -e "${gl_lv}✅ IPv4: ${target_ipv4}${gl_bai}"
+                        break
+                    else
+                        echo -e "${gl_hong}❌ 无效的IPv4地址格式${gl_bai}"
+                    fi
+                done
+                
+                # 输入目标IPv6地址（必填）
+                local target_ipv6=""
+                while true; do
+                    read -e -p "$(echo -e "${gl_huang}目标服务器 IPv6 地址: ${gl_bai}")" target_ipv6
+                    
+                    if [ -z "$target_ipv6" ]; then
+                        echo -e "${gl_hong}❌ IPv6地址不能为空${gl_bai}"
+                    elif [[ "$target_ipv6" =~ : ]]; then
+                        echo -e "${gl_lv}✅ IPv6: ${target_ipv6}${gl_bai}"
+                        break
+                    else
+                        echo -e "${gl_hong}❌ 无效的IPv6地址格式（应包含冒号）${gl_bai}"
+                    fi
+                done
+                
+                # 执行检测
+                check_outbound_connections "$target_ipv4" "$target_ipv6"
+                ;;
+            2)
+                # 入站检测
+                clear
+                echo -e "${gl_kjlan}=== 入站连接检测 ===${gl_bai}"
+                echo ""
+                echo "请输入源服务器的IP地址"
+                echo "------------------------------------------------"
+                
+                # 输入源IPv4地址（必填）
+                local source_ipv4=""
+                while true; do
+                    read -e -p "$(echo -e "${gl_huang}源服务器 IPv4 地址: ${gl_bai}")" source_ipv4
+                    
+                    if [ -z "$source_ipv4" ]; then
+                        echo -e "${gl_hong}❌ IPv4地址不能为空${gl_bai}"
+                    elif [[ "$source_ipv4" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]]; then
+                        echo -e "${gl_lv}✅ IPv4: ${source_ipv4}${gl_bai}"
+                        break
+                    else
+                        echo -e "${gl_hong}❌ 无效的IPv4地址格式${gl_bai}"
+                    fi
+                done
+                
+                # 输入源IPv6地址（必填）
+                local source_ipv6=""
+                while true; do
+                    read -e -p "$(echo -e "${gl_huang}源服务器 IPv6 地址: ${gl_bai}")" source_ipv6
+                    
+                    if [ -z "$source_ipv6" ]; then
+                        echo -e "${gl_hong}❌ IPv6地址不能为空${gl_bai}"
+                    elif [[ "$source_ipv6" =~ : ]]; then
+                        echo -e "${gl_lv}✅ IPv6: ${source_ipv6}${gl_bai}"
+                        break
+                    else
+                        echo -e "${gl_hong}❌ 无效的IPv6地址格式（应包含冒号）${gl_bai}"
+                    fi
+                done
+                
+                # 执行检测
+                check_inbound_connections "$source_ipv4" "$source_ipv6"
+                ;;
+            0)
+                return
+                ;;
+            *)
+                echo "无效选择"
+                sleep 2
+                ;;
+        esac
+    done
+}
+
 show_xray_config() {
     clear
     echo -e "${gl_kjlan}=== 查看 Xray 配置 ===${gl_bai}"
@@ -2281,6 +2495,51 @@ show_main_menu() {
         echo "8. 设置临时SOCKS5代理"
         echo "9. 设置IPv4优先"
         echo "10. 设置IPv6优先"
+        echo "11. IPv4/IPv6连接检测"
+        echo ""
+        echo -e "${gl_kjlan}[Xray配置]${gl_bai}"
+        echo "12. 查看Xray配置"
+        echo "13. 设置Xray IPv6出站"
+        echo "14. 恢复Xray默认配置"
+        echo ""
+        echo -e "${gl_kjlan}[系统信息]${gl_bai}"
+        echo "15. 查看详细状态"
+        echo ""
+        echo -e "${gl_kjlan}[服务器检测合集]${gl_bai}"
+        echo "16. NS一键检测脚本"
+        echo "17. 服务器带宽测试"
+        echo "18. 三网回程路由测试"
+        echo "19. IP质量检测"
+        echo "20. IP质量检测-仅IPv4"
+        echo "21. 网络延迟质量检测"
+        echo "22. 国际互联速度测试"
+        echo "23. IP媒体/AI解锁检测"
+        echo ""
+        echo -e "${gl_kjlan}[脚本合集]${gl_bai}"
+        echo "24. PF_realm转发脚本"
+        echo "25. 御坂美琴一键双协议"
+        echo "26. F佬一键sing box脚本"
+        echo "27. 科技lion脚本"
+        echo "28. NS论坛的cake调优"
+        echo "29. 酷雪云脚本"
+        echo ""
+        echo -e "${gl_kjlan}[代理部署]${gl_bai}"
+        echo "30. 一键部署SOCKS5代理"
+    else
+        echo "1. 安装 XanMod 内核 + BBR v3"
+        echo ""
+        echo -e "${gl_kjlan}[BBR TCP调优]${gl_bai}"
+        echo "2. NS论坛CAKE调优"
+        echo "3. 科技lion高性能模式内核参数优化"
+        echo "4. BBR 直连/落地优化（智能带宽检测）"
+        echo ""
+        echo -e "${gl_kjlan}[系统设置]${gl_bai}"
+        echo "5. 虚拟内存管理"
+        echo "6. IPv6管理（临时/永久禁用/取消）"
+        echo "7. 设置临时SOCKS5代理"
+        echo "8. 设置IPv4优先"
+        echo "9. 设置IPv6优先"
+        echo "10. IPv4/IPv6连接检测"
         echo ""
         echo -e "${gl_kjlan}[Xray配置]${gl_bai}"
         echo "11. 查看Xray配置"
@@ -2310,49 +2569,6 @@ show_main_menu() {
         echo ""
         echo -e "${gl_kjlan}[代理部署]${gl_bai}"
         echo "29. 一键部署SOCKS5代理"
-    else
-        echo "1. 安装 XanMod 内核 + BBR v3"
-        echo ""
-        echo -e "${gl_kjlan}[BBR TCP调优]${gl_bai}"
-        echo "2. NS论坛CAKE调优"
-        echo "3. 科技lion高性能模式内核参数优化"
-        echo "4. BBR 直连/落地优化（智能带宽检测）"
-        echo ""
-        echo -e "${gl_kjlan}[系统设置]${gl_bai}"
-        echo "5. 虚拟内存管理"
-        echo "6. IPv6管理（临时/永久禁用/取消）"
-        echo "7. 设置临时SOCKS5代理"
-        echo "8. 设置IPv4优先"
-        echo "9. 设置IPv6优先"
-        echo ""
-        echo -e "${gl_kjlan}[Xray配置]${gl_bai}"
-        echo "10. 查看Xray配置"
-        echo "11. 设置Xray IPv6出站"
-        echo "12. 恢复Xray默认配置"
-        echo ""
-        echo -e "${gl_kjlan}[系统信息]${gl_bai}"
-        echo "13. 查看详细状态"
-        echo ""
-        echo -e "${gl_kjlan}[服务器检测合集]${gl_bai}"
-        echo "14. NS一键检测脚本"
-        echo "15. 服务器带宽测试"
-        echo "16. 三网回程路由测试"
-        echo "17. IP质量检测"
-        echo "18. IP质量检测-仅IPv4"
-        echo "19. 网络延迟质量检测"
-        echo "20. 国际互联速度测试"
-        echo "21. IP媒体/AI解锁检测"
-        echo ""
-        echo -e "${gl_kjlan}[脚本合集]${gl_bai}"
-        echo "22. PF_realm转发脚本"
-        echo "23. 御坂美琴一键双协议"
-        echo "24. F佬一键sing box脚本"
-        echo "25. 科技lion脚本"
-        echo "26. NS论坛的cake调优"
-        echo "27. 酷雪云脚本"
-        echo ""
-        echo -e "${gl_kjlan}[代理部署]${gl_bai}"
-        echo "28. 一键部署SOCKS5代理"
     fi
     
     echo ""
@@ -2437,136 +2653,143 @@ show_main_menu() {
             if [ $is_installed -eq 0 ]; then
                 set_ipv6_priority
             else
-                show_xray_config
+                check_ipv4v6_connections
             fi
             ;;
         11)
+            if [ $is_installed -eq 0 ]; then
+                check_ipv4v6_connections
+            else
+                show_xray_config
+            fi
+            ;;
+        12)
             if [ $is_installed -eq 0 ]; then
                 show_xray_config
             else
                 set_xray_ipv6_outbound
             fi
             ;;
-        12)
+        13)
             if [ $is_installed -eq 0 ]; then
                 set_xray_ipv6_outbound
             else
                 restore_xray_default
             fi
             ;;
-        13)
+        14)
             if [ $is_installed -eq 0 ]; then
                 restore_xray_default
             else
                 show_detailed_status
             fi
             ;;
-        14)
+        15)
             if [ $is_installed -eq 0 ]; then
                 show_detailed_status
             else
                 run_ns_detect
             fi
             ;;
-        15)
+        16)
             if [ $is_installed -eq 0 ]; then
                 run_ns_detect
             else
                 run_speedtest
             fi
             ;;
-        16)
+        17)
             if [ $is_installed -eq 0 ]; then
                 run_speedtest
             else
                 run_backtrace
             fi
             ;;
-        17)
+        18)
             if [ $is_installed -eq 0 ]; then
                 run_backtrace
             else
                 run_ip_quality_check
             fi
             ;;
-        18)
+        19)
             if [ $is_installed -eq 0 ]; then
                 run_ip_quality_check
             else
                 run_ip_quality_check_ipv4
             fi
             ;;
-        19)
+        20)
             if [ $is_installed -eq 0 ]; then
                 run_ip_quality_check_ipv4
             else
                 run_network_latency_check
             fi
             ;;
-        20)
+        21)
             if [ $is_installed -eq 0 ]; then
                 run_network_latency_check
             else
                 run_international_speed_test
             fi
             ;;
-        21)
+        22)
             if [ $is_installed -eq 0 ]; then
                 run_international_speed_test
             else
                 run_unlock_check
             fi
             ;;
-        22)
+        23)
             if [ $is_installed -eq 0 ]; then
                 run_unlock_check
             else
                 run_pf_realm
             fi
             ;;
-        23)
+        24)
             if [ $is_installed -eq 0 ]; then
                 run_pf_realm
             else
                 run_misaka_xray
             fi
             ;;
-        24)
+        25)
             if [ $is_installed -eq 0 ]; then
                 run_misaka_xray
             else
                 run_fscarmen_singbox
             fi
             ;;
-        25)
+        26)
             if [ $is_installed -eq 0 ]; then
                 run_fscarmen_singbox
             else
                 run_kejilion_script
             fi
             ;;
-        26)
+        27)
             if [ $is_installed -eq 0 ]; then
                 run_kejilion_script
             else
                 run_ns_cake
             fi
             ;;
-        27)
+        28)
             if [ $is_installed -eq 0 ]; then
                 run_ns_cake
             else
                 run_kxy_script
             fi
             ;;
-        28)
+        29)
             if [ $is_installed -eq 0 ]; then
                 run_kxy_script
             else
                 deploy_socks5
             fi
             ;;
-        29)
+        30)
             if [ $is_installed -eq 0 ]; then
                 deploy_socks5
             else
