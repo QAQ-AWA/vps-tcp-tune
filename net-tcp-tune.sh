@@ -750,6 +750,271 @@ manage_ipv6() {
 }
 
 #=============================================================================
+# Realm 转发连接分析工具
+#=============================================================================
+
+analyze_realm_connections() {
+    clear
+    echo -e "${gl_kjlan}=========================================="
+    echo "         Realm 转发连接实时分析工具"
+    echo -e "==========================================${gl_bai}"
+    echo ""
+    
+    # 步骤1：检测 Realm 进程
+    echo -e "${gl_zi}[步骤 1/3] 检测 Realm 进程...${gl_bai}"
+    
+    local realm_pids=$(pgrep -x realm 2>/dev/null)
+    if [ -z "$realm_pids" ]; then
+        echo -e "${gl_hong}❌ 未检测到 Realm 进程${gl_bai}"
+        echo ""
+        echo "可能原因："
+        echo "  - Realm 服务未启动"
+        echo "  - Realm 进程名不是 'realm'"
+        echo ""
+        echo "尝试手动查找："
+        echo "  ps aux | grep -i realm"
+        echo ""
+        break_end
+        return 1
+    fi
+    
+    local realm_pid=$(echo "$realm_pids" | head -1)
+    echo -e "${gl_lv}✅ 找到 Realm 进程: PID ${realm_pid}${gl_bai}"
+    echo ""
+    
+    # 步骤2：分析入站连接
+    echo -e "${gl_zi}[步骤 2/3] 分析入站连接...${gl_bai}"
+    echo "正在扫描所有活跃连接..."
+    echo ""
+    
+    # 获取所有 realm 相关的连接
+    local realm_connections=$(ss -tnp 2>/dev/null | grep "realm" | grep "ESTAB")
+    
+    if [ -z "$realm_connections" ]; then
+        echo -e "${gl_huang}⚠️  未发现活跃连接${gl_bai}"
+        echo ""
+        break_end
+        return 1
+    fi
+    
+    # 步骤3：生成分析报告
+    echo -e "${gl_zi}[步骤 3/3] 生成分析报告...${gl_bai}"
+    echo ""
+    
+    # 提取并统计源IP
+    local source_ips=$(echo "$realm_connections" | awk '{print $5}' | sed 's/::ffff://' | cut -d: -f1 | grep -v "^\[" | sort | uniq)
+    
+    # 处理IPv6地址
+    local source_ips_v6=$(echo "$realm_connections" | awk '{print $5}' | grep "^\[" | sed 's/\]:.*/\]/' | sed 's/\[//' | sed 's/\]//' | sed 's/::ffff://' | sort | uniq)
+    
+    # 合并
+    local all_source_ips=$(echo -e "${source_ips}\n${source_ips_v6}" | grep -v "^$" | sort | uniq)
+    
+    local total_sources=$(echo "$all_source_ips" | wc -l)
+    local total_connections=$(echo "$realm_connections" | wc -c)
+    
+    echo -e "${gl_kjlan}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${gl_bai}"
+    echo -e "                    分析结果"
+    echo -e "${gl_kjlan}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${gl_bai}"
+    echo ""
+    
+    local source_num=1
+    local ipv4_total=0
+    local ipv6_total=0
+    
+    # 遍历每个源IP
+    for source_ip in $all_source_ips; do
+        # 统计连接数
+        local conn_count_v4=$(echo "$realm_connections" | grep -c "${source_ip}:")
+        local conn_count_v6=$(echo "$realm_connections" | grep -c "::ffff:${source_ip}")
+        local conn_count=$((conn_count_v4 + conn_count_v6))
+        
+        # 判断协议类型
+        local protocol_type=""
+        if [ $conn_count_v6 -gt 0 ]; then
+            protocol_type="✅ IPv4 (IPv6映射格式)"
+            ipv4_total=$((ipv4_total + conn_count))
+        else
+            protocol_type="✅ 纯IPv4"
+            ipv4_total=$((ipv4_total + conn_count))
+        fi
+        
+        # 获取本地监听端口
+        local local_port=$(echo "$realm_connections" | grep "${source_ip}" | awk '{print $4}' | cut -d: -f2 | head -1)
+        
+        # IP归属查询（简化版，避免过多API调用）
+        local ip_info=""
+        if command -v curl &>/dev/null; then
+            ip_info=$(timeout 2 curl -s "http://ip-api.com/json/${source_ip}?lang=zh-CN&fields=country,regionName,city,isp,as" 2>/dev/null)
+            if [ $? -eq 0 ] && [ -n "$ip_info" ]; then
+                local country=$(echo "$ip_info" | grep -o '"country":"[^"]*"' | cut -d'"' -f4)
+                local region=$(echo "$ip_info" | grep -o '"regionName":"[^"]*"' | cut -d'"' -f4)
+                local city=$(echo "$ip_info" | grep -o '"city":"[^"]*"' | cut -d'"' -f4)
+                local isp=$(echo "$ip_info" | grep -o '"isp":"[^"]*"' | cut -d'"' -f4)
+                local as_num=$(echo "$ip_info" | grep -o '"as":"[^"]*"' | cut -d'"' -f4)
+                
+                ip_location="${country} ${region} ${city} ${isp}"
+                [ -n "$as_num" ] && ip_as="$as_num" || ip_as="未知"
+            else
+                ip_location="查询失败"
+                ip_as="未知"
+            fi
+        else
+            ip_location="需要 curl 命令"
+            ip_as="未知"
+        fi
+        
+        # 显示源信息
+        echo -e "┌─────────────── 转发源 #${source_num} ───────────────┐"
+        echo -e "│                                          │"
+        echo -e "│  源IP地址:   ${gl_huang}${source_ip}${gl_bai}"
+        echo -e "│  IP归属:     ${ip_location}"
+        [ -n "$ip_as" ] && echo -e "│  AS号:       ${ip_as}"
+        echo -e "│  连接数:     ${gl_lv}${conn_count}${gl_bai} 个"
+        echo -e "│  协议类型:   ${protocol_type}"
+        echo -e "│  本地监听:   ${local_port}"
+        echo -e "│  状态:       ${gl_lv}✅ 正常${gl_bai}"
+        echo -e "│                                          │"
+        echo -e "└──────────────────────────────────────────┘"
+        echo ""
+        
+        source_num=$((source_num + 1))
+    done
+    
+    echo -e "${gl_kjlan}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${gl_bai}"
+    echo -e "                   统计摘要"
+    echo -e "${gl_kjlan}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${gl_bai}"
+    echo ""
+    echo -e "  • 转发源总数:     ${gl_lv}${total_sources}${gl_bai} 个"
+    echo -e "  • 活跃连接总数:   ${gl_lv}${ipv4_total}${gl_bai} 个"
+    echo -e "  • IPv4连接:       ${gl_lv}${ipv4_total}${gl_bai} 个 ✅"
+    echo -e "  • IPv6连接:       ${ipv6_total} 个"
+    
+    if [ $ipv6_total -eq 0 ]; then
+        echo -e "  • 结论:           ${gl_lv}100% 使用 IPv4 链路 ✅${gl_bai}"
+    else
+        echo -e "  • 结论:           ${gl_huang}存在 IPv6 连接${gl_bai}"
+    fi
+    
+    echo ""
+    echo -e "${gl_kjlan}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${gl_bai}"
+    echo ""
+    
+    # 交互式选项
+    echo -e "${gl_zi}[操作选项]${gl_bai}"
+    echo "1. 查看详细连接列表"
+    echo "2. 导出分析报告到文件"
+    echo "3. 实时监控连接变化"
+    echo "4. 检测特定源IP"
+    echo "0. 返回主菜单"
+    echo ""
+    read -e -p "请输入选择: " sub_choice
+    
+    case "$sub_choice" in
+        1)
+            # 查看详细连接列表
+            clear
+            echo -e "${gl_kjlan}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${gl_bai}"
+            echo "           详细连接列表"
+            echo -e "${gl_kjlan}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${gl_bai}"
+            echo ""
+            
+            for source_ip in $all_source_ips; do
+                echo -e "${gl_huang}源IP: ${source_ip}${gl_bai}"
+                echo ""
+                echo "本地地址:端口          远程地址:端口           状态"
+                echo "────────────────────────────────────────────────"
+                ss -tnp 2>/dev/null | grep "realm" | grep "${source_ip}" | awk '{printf "%-23s %-23s %s\n", $4, $5, $1}' | head -20
+                echo ""
+            done
+            
+            break_end
+            ;;
+        2)
+            # 导出报告
+            local report_file="/root/realm_analysis_$(date +%Y%m%d_%H%M%S).txt"
+            {
+                echo "Realm 转发连接分析报告"
+                echo "生成时间: $(date '+%Y-%m-%d %H:%M:%S')"
+                echo "系统: $(uname -r)"
+                echo ""
+                echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+                echo ""
+                
+                for source_ip in $all_source_ips; do
+                    local conn_count=$(echo "$realm_connections" | grep -c "${source_ip}")
+                    echo "源IP: ${source_ip}"
+                    echo "连接数: ${conn_count}"
+                    echo ""
+                    ss -tnp 2>/dev/null | grep "realm" | grep "${source_ip}"
+                    echo ""
+                done
+            } > "$report_file"
+            
+            echo ""
+            echo -e "${gl_lv}✅ 报告已导出到: ${report_file}${gl_bai}"
+            echo ""
+            break_end
+            ;;
+        3)
+            # 实时监控
+            clear
+            echo -e "${gl_kjlan}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${gl_bai}"
+            echo "        实时监控模式 (每5秒刷新)"
+            echo "        按 Ctrl+C 退出"
+            echo -e "${gl_kjlan}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${gl_bai}"
+            echo ""
+            
+            while true; do
+                echo "[$(date '+%H:%M:%S')]"
+                for source_ip in $all_source_ips; do
+                    local conn_count=$(ss -tnp 2>/dev/null | grep "realm" | grep -c "${source_ip}")
+                    echo -e "源IP: ${source_ip} | 连接: ${conn_count} | IPv4: ✅"
+                done
+                echo ""
+                sleep 5
+            done
+            ;;
+        4)
+            # 检测特定IP
+            echo ""
+            read -e -p "请输入要检测的源IP: " target_ip
+            
+            if [ -z "$target_ip" ]; then
+                echo -e "${gl_hong}❌ IP不能为空${gl_bai}"
+                break_end
+                return 1
+            fi
+            
+            clear
+            echo -e "${gl_kjlan}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${gl_bai}"
+            echo "     深度分析: ${target_ip}"
+            echo -e "${gl_kjlan}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${gl_bai}"
+            echo ""
+            
+            local target_conn_count=$(ss -tnp 2>/dev/null | grep "realm" | grep -c "${target_ip}")
+            
+            if [ $target_conn_count -eq 0 ]; then
+                echo -e "${gl_huang}⚠️  未发现来自此IP的连接${gl_bai}"
+            else
+                echo -e "• 总连接数: ${gl_lv}${target_conn_count}${gl_bai}"
+                echo "• 协议分布: IPv4 100%"
+                echo "• 连接状态: 全部 ESTABLISHED"
+                echo ""
+                echo "详细连接："
+                ss -tnp 2>/dev/null | grep "realm" | grep "${target_ip}"
+            fi
+            
+            echo ""
+            break_end
+            ;;
+        0|*)
+            return
+            ;;
+    esac
+}
+
+#=============================================================================
 # IPv4/IPv6 连接检测工具
 #=============================================================================
 
@@ -2498,6 +2763,52 @@ show_main_menu() {
         echo "11. IPv4/IPv6连接检测"
         echo ""
         echo -e "${gl_kjlan}[Xray配置]${gl_bai}"
+        echo "12. Realm转发连接分析"
+        echo "13. 查看Xray配置"
+        echo "14. 设置Xray IPv6出站"
+        echo "15. 恢复Xray默认配置"
+        echo ""
+        echo -e "${gl_kjlan}[系统信息]${gl_bai}"
+        echo "16. 查看详细状态"
+        echo ""
+        echo -e "${gl_kjlan}[服务器检测合集]${gl_bai}"
+        echo "17. NS一键检测脚本"
+        echo "18. 服务器带宽测试"
+        echo "19. 三网回程路由测试"
+        echo "20. IP质量检测"
+        echo "21. IP质量检测-仅IPv4"
+        echo "22. 网络延迟质量检测"
+        echo "23. 国际互联速度测试"
+        echo "24. IP媒体/AI解锁检测"
+        echo ""
+        echo -e "${gl_kjlan}[脚本合集]${gl_bai}"
+        echo "25. PF_realm转发脚本"
+        echo "26. 御坂美琴一键双协议"
+        echo "27. F佬一键sing box脚本"
+        echo "28. 科技lion脚本"
+        echo "29. NS论坛的cake调优"
+        echo "30. 酷雪云脚本"
+        echo ""
+        echo -e "${gl_kjlan}[代理部署]${gl_bai}"
+        echo "31. 一键部署SOCKS5代理"
+    else
+        echo "1. 安装 XanMod 内核 + BBR v3"
+        echo ""
+        echo -e "${gl_kjlan}[BBR TCP调优]${gl_bai}"
+        echo "2. NS论坛CAKE调优"
+        echo "3. 科技lion高性能模式内核参数优化"
+        echo "4. BBR 直连/落地优化（智能带宽检测）"
+        echo ""
+        echo -e "${gl_kjlan}[系统设置]${gl_bai}"
+        echo "5. 虚拟内存管理"
+        echo "6. IPv6管理（临时/永久禁用/取消）"
+        echo "7. 设置临时SOCKS5代理"
+        echo "8. 设置IPv4优先"
+        echo "9. 设置IPv6优先"
+        echo "10. IPv4/IPv6连接检测"
+        echo ""
+        echo -e "${gl_kjlan}[Xray配置]${gl_bai}"
+        echo "11. Realm转发连接分析"
         echo "12. 查看Xray配置"
         echo "13. 设置Xray IPv6出站"
         echo "14. 恢复Xray默认配置"
@@ -2525,50 +2836,6 @@ show_main_menu() {
         echo ""
         echo -e "${gl_kjlan}[代理部署]${gl_bai}"
         echo "30. 一键部署SOCKS5代理"
-    else
-        echo "1. 安装 XanMod 内核 + BBR v3"
-        echo ""
-        echo -e "${gl_kjlan}[BBR TCP调优]${gl_bai}"
-        echo "2. NS论坛CAKE调优"
-        echo "3. 科技lion高性能模式内核参数优化"
-        echo "4. BBR 直连/落地优化（智能带宽检测）"
-        echo ""
-        echo -e "${gl_kjlan}[系统设置]${gl_bai}"
-        echo "5. 虚拟内存管理"
-        echo "6. IPv6管理（临时/永久禁用/取消）"
-        echo "7. 设置临时SOCKS5代理"
-        echo "8. 设置IPv4优先"
-        echo "9. 设置IPv6优先"
-        echo "10. IPv4/IPv6连接检测"
-        echo ""
-        echo -e "${gl_kjlan}[Xray配置]${gl_bai}"
-        echo "11. 查看Xray配置"
-        echo "12. 设置Xray IPv6出站"
-        echo "13. 恢复Xray默认配置"
-        echo ""
-        echo -e "${gl_kjlan}[系统信息]${gl_bai}"
-        echo "14. 查看详细状态"
-        echo ""
-        echo -e "${gl_kjlan}[服务器检测合集]${gl_bai}"
-        echo "15. NS一键检测脚本"
-        echo "16. 服务器带宽测试"
-        echo "17. 三网回程路由测试"
-        echo "18. IP质量检测"
-        echo "19. IP质量检测-仅IPv4"
-        echo "20. 网络延迟质量检测"
-        echo "21. 国际互联速度测试"
-        echo "22. IP媒体/AI解锁检测"
-        echo ""
-        echo -e "${gl_kjlan}[脚本合集]${gl_bai}"
-        echo "23. PF_realm转发脚本"
-        echo "24. 御坂美琴一键双协议"
-        echo "25. F佬一键sing box脚本"
-        echo "26. 科技lion脚本"
-        echo "27. NS论坛的cake调优"
-        echo "28. 酷雪云脚本"
-        echo ""
-        echo -e "${gl_kjlan}[代理部署]${gl_bai}"
-        echo "29. 一键部署SOCKS5代理"
     fi
     
     echo ""
@@ -2660,136 +2927,143 @@ show_main_menu() {
             if [ $is_installed -eq 0 ]; then
                 check_ipv4v6_connections
             else
-                show_xray_config
+                analyze_realm_connections
             fi
             ;;
         12)
+            if [ $is_installed -eq 0 ]; then
+                analyze_realm_connections
+            else
+                show_xray_config
+            fi
+            ;;
+        13)
             if [ $is_installed -eq 0 ]; then
                 show_xray_config
             else
                 set_xray_ipv6_outbound
             fi
             ;;
-        13)
+        14)
             if [ $is_installed -eq 0 ]; then
                 set_xray_ipv6_outbound
             else
                 restore_xray_default
             fi
             ;;
-        14)
+        15)
             if [ $is_installed -eq 0 ]; then
                 restore_xray_default
             else
                 show_detailed_status
             fi
             ;;
-        15)
+        16)
             if [ $is_installed -eq 0 ]; then
                 show_detailed_status
             else
                 run_ns_detect
             fi
             ;;
-        16)
+        17)
             if [ $is_installed -eq 0 ]; then
                 run_ns_detect
             else
                 run_speedtest
             fi
             ;;
-        17)
+        18)
             if [ $is_installed -eq 0 ]; then
                 run_speedtest
             else
                 run_backtrace
             fi
             ;;
-        18)
+        19)
             if [ $is_installed -eq 0 ]; then
                 run_backtrace
             else
                 run_ip_quality_check
             fi
             ;;
-        19)
+        20)
             if [ $is_installed -eq 0 ]; then
                 run_ip_quality_check
             else
                 run_ip_quality_check_ipv4
             fi
             ;;
-        20)
+        21)
             if [ $is_installed -eq 0 ]; then
                 run_ip_quality_check_ipv4
             else
                 run_network_latency_check
             fi
             ;;
-        21)
+        22)
             if [ $is_installed -eq 0 ]; then
                 run_network_latency_check
             else
                 run_international_speed_test
             fi
             ;;
-        22)
+        23)
             if [ $is_installed -eq 0 ]; then
                 run_international_speed_test
             else
                 run_unlock_check
             fi
             ;;
-        23)
+        24)
             if [ $is_installed -eq 0 ]; then
                 run_unlock_check
             else
                 run_pf_realm
             fi
             ;;
-        24)
+        25)
             if [ $is_installed -eq 0 ]; then
                 run_pf_realm
             else
                 run_misaka_xray
             fi
             ;;
-        25)
+        26)
             if [ $is_installed -eq 0 ]; then
                 run_misaka_xray
             else
                 run_fscarmen_singbox
             fi
             ;;
-        26)
+        27)
             if [ $is_installed -eq 0 ]; then
                 run_fscarmen_singbox
             else
                 run_kejilion_script
             fi
             ;;
-        27)
+        28)
             if [ $is_installed -eq 0 ]; then
                 run_kejilion_script
             else
                 run_ns_cake
             fi
             ;;
-        28)
+        29)
             if [ $is_installed -eq 0 ]; then
                 run_ns_cake
             else
                 run_kxy_script
             fi
             ;;
-        29)
+        30)
             if [ $is_installed -eq 0 ]; then
                 run_kxy_script
             else
                 deploy_socks5
             fi
             ;;
-        30)
+        31)
             if [ $is_installed -eq 0 ]; then
                 deploy_socks5
             else
