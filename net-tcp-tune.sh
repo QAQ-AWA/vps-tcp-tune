@@ -847,13 +847,13 @@ analyze_realm_connections() {
     for source_ip in $all_source_ips; do
         # 统计连接数
         local conn_count_v4=$(echo "$realm_connections" | grep -c "${source_ip}:")
-        local conn_count_v6=$(echo "$realm_connections" | grep -c "::ffff:${source_ip}")
-        local conn_count=$((conn_count_v4 + conn_count_v6))
+        local conn_count_v6_mapped=$(echo "$realm_connections" | grep -c "::ffff:${source_ip}")
+        local conn_count=$((conn_count_v4 + conn_count_v6_mapped))
         
-        # 判断协议类型
+        # 判断协议类型（注意：::ffff: 开头的是 IPv4-mapped IPv6，本质是 IPv4）
         local protocol_type=""
-        if [ $conn_count_v6 -gt 0 ]; then
-            protocol_type="✅ IPv4 (IPv6映射格式)"
+        if [ $conn_count_v6_mapped -gt 0 ]; then
+            protocol_type="✅ IPv4（IPv6映射格式）"
             ipv4_total=$((ipv4_total + conn_count))
         else
             protocol_type="✅ 纯IPv4"
@@ -1166,8 +1166,11 @@ check_all_inbound_connections() {
     echo ""
     
     # 统计 IPv4 和 IPv6 连接
-    local ipv4_connections=$(echo "$connections" | grep -v ":" | wc -l)
-    local ipv6_connections=$(echo "$connections" | grep -c ":")
+    # 注意：::ffff: 开头的是 IPv4-mapped IPv6，本质是 IPv4
+    local ipv4_pure=$(echo "$connections" | grep -v ":" | wc -l)
+    local ipv4_mapped=$(echo "$connections" | grep -c "::ffff:")
+    local ipv4_connections=$((ipv4_pure + ipv4_mapped))
+    local ipv6_connections=$(echo "$connections" | grep ":" | grep -v "::ffff:" | wc -l)
     local total_connections=$(echo "$connections" | wc -l)
     
     # 提取唯一的源 IP（去重）
@@ -1183,12 +1186,16 @@ check_all_inbound_connections() {
     echo ""
     echo -e "  • 总连接数:       ${gl_lv}${total_connections}${gl_bai}"
     echo -e "  • 唯一源IP数:     ${gl_huang}${source_count}${gl_bai}"
-    echo -e "  • IPv4 连接:      ${gl_lv}${ipv4_connections}${gl_bai}"
-    echo -e "  • IPv6 连接:      ${ipv6_connections}"
+    echo ""
+    echo -e "  ${gl_zi}协议分布：${gl_bai}"
+    echo -e "    - IPv4（纯）:    ${gl_lv}${ipv4_pure}${gl_bai} 个"
+    echo -e "    - IPv4（映射）:  ${gl_lv}${ipv4_mapped}${gl_bai} 个"
+    echo -e "    - IPv4 总计:     ${gl_lv}${ipv4_connections}${gl_bai} 个"
+    echo -e "    - IPv6（真）:    ${ipv6_connections} 个"
     echo ""
     
     if [ "$ipv6_connections" -eq 0 ]; then
-        echo -e "  ${gl_lv}✅ 100% 使用 IPv4 链路${gl_bai}"
+        echo -e "  ${gl_lv}✅ 100% 使用 IPv4 链路（包含映射格式）${gl_bai}"
     else
         local ipv4_percent=$((ipv4_connections * 100 / total_connections))
         local ipv6_percent=$((ipv6_connections * 100 / total_connections))
@@ -1204,8 +1211,11 @@ check_all_inbound_connections() {
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     echo "$connections" | sed 's/:[0-9]*$//' | sort | uniq -c | sort -rn | head -10 | while read count ip; do
         # 判断是 IPv4 还是 IPv6
-        if echo "$ip" | grep -q ":"; then
-            echo -e "  ${count} 个连接 ← ${gl_huang}${ip}${gl_bai} ${gl_hong}[IPv6]${gl_bai}"
+        # ::ffff: 开头的是 IPv4-mapped IPv6，本质是 IPv4
+        if echo "$ip" | grep -q "::ffff:"; then
+            echo -e "  ${count} 个连接 ← ${gl_lv}${ip}${gl_bai} ${gl_lv}[IPv4映射]${gl_bai}"
+        elif echo "$ip" | grep -q ":"; then
+            echo -e "  ${count} 个连接 ← ${gl_hong}${ip}${gl_bai} ${gl_hong}[IPv6]${gl_bai}"
         else
             echo -e "  ${count} 个连接 ← ${gl_lv}${ip}${gl_bai} ${gl_lv}[IPv4]${gl_bai}"
         fi
