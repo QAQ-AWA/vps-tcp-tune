@@ -768,12 +768,12 @@ check_outbound_connections() {
     echo ""
     
     echo -e "${gl_zi}【1/4】IPv4连接数：${gl_bai}"
-    local ipv4_count=$(ss -4 -tn 2>/dev/null | grep -c "$target_ipv4" || echo "0")
+    local ipv4_count=$(ss -4 -tn 2>/dev/null | grep -c "$target_ipv4")
     echo "$ipv4_count"
     
     echo ""
     echo -e "${gl_zi}【2/4】IPv6连接数（应该是0）：${gl_bai}"
-    local ipv6_count=$(ss -6 -tn 2>/dev/null | grep -c "$target_ipv6" || echo "0")
+    local ipv6_count=$(ss -6 -tn 2>/dev/null | grep -c "$target_ipv6")
     echo "$ipv6_count"
     
     echo ""
@@ -826,8 +826,8 @@ check_inbound_connections() {
     
     echo ""
     echo -e "${gl_zi}【3/5】统计来自源服务器的连接数：${gl_bai}"
-    local ipv4_conn_count=$(ss -tn state established 2>/dev/null | grep -c "$source_ipv4" || echo "0")
-    local ipv6_conn_count=$(ss -tn state established 2>/dev/null | grep -c "$source_ipv6" || echo "0")
+    local ipv4_conn_count=$(ss -tn state established 2>/dev/null | grep -c "$source_ipv4")
+    local ipv6_conn_count=$(ss -tn state established 2>/dev/null | grep -c "$source_ipv6")
     echo -e "来自 ${gl_lv}${source_ipv4}${gl_bai} 的连接: ${gl_lv}$ipv4_conn_count${gl_bai} 个"
     echo -e "来自 ${gl_hong}${source_ipv6}${gl_bai} 的连接: ${gl_hong}$ipv6_conn_count${gl_bai} 个"
     
