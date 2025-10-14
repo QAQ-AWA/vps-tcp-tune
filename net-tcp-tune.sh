@@ -1210,21 +1210,69 @@ check_all_inbound_connections() {
     echo -e "${gl_kjlan}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${gl_bai}"
     echo ""
     
-    # 显示 Top 10 源 IP
-    echo -e "${gl_zi}Top 10 连接源（按连接数排序）：${gl_bai}"
-    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    # 显示 Top 10 源 IP（增强版：带归属信息）
+    echo -e "${gl_zi}Top 10 连接源详情（按连接数排序）：${gl_bai}"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo ""
+    
+    local source_num=1
     echo "$connections" | sed 's/:[0-9]*$//' | sort | uniq -c | sort -rn | head -10 | while read count ip; do
-        # 判断是 IPv4 还是 IPv6
-        # ::ffff: 开头的是 IPv4-mapped IPv6，本质是 IPv4
+        # 提取纯 IP（去除方括号）
+        local clean_ip=$(echo "$ip" | sed 's/\[::ffff://; s/\]//')
+        
+        # 判断协议类型
+        local protocol_type=""
+        local protocol_color=""
         if echo "$ip" | grep -q "::ffff:"; then
-            echo -e "  ${count} 个连接 ← ${gl_lv}${ip}${gl_bai} ${gl_lv}[IPv4映射]${gl_bai}"
+            protocol_type="IPv4（映射格式）"
+            protocol_color="${gl_lv}"
         elif echo "$ip" | grep -q ":"; then
-            echo -e "  ${count} 个连接 ← ${gl_hong}${ip}${gl_bai} ${gl_hong}[IPv6]${gl_bai}"
+            protocol_type="IPv6（真）"
+            protocol_color="${gl_hong}"
         else
-            echo -e "  ${count} 个连接 ← ${gl_lv}${ip}${gl_bai} ${gl_lv}[IPv4]${gl_bai}"
+            protocol_type="纯IPv4"
+            protocol_color="${gl_lv}"
+            clean_ip="$ip"
         fi
+        
+        # IP 归属查询
+        local ip_location="查询中..."
+        local ip_as="未知"
+        
+        if command -v curl &>/dev/null; then
+            local ip_info=$(timeout 2 curl -s "http://ip-api.com/json/${clean_ip}?lang=zh-CN&fields=country,regionName,city,isp,as" 2>/dev/null)
+            if [ $? -eq 0 ] && [ -n "$ip_info" ]; then
+                local country=$(echo "$ip_info" | grep -o '"country":"[^"]*"' | cut -d'"' -f4)
+                local region=$(echo "$ip_info" | grep -o '"regionName":"[^"]*"' | cut -d'"' -f4)
+                local city=$(echo "$ip_info" | grep -o '"city":"[^"]*"' | cut -d'"' -f4)
+                local isp=$(echo "$ip_info" | grep -o '"isp":"[^"]*"' | cut -d'"' -f4)
+                local as_num=$(echo "$ip_info" | grep -o '"as":"[^"]*"' | cut -d'"' -f4)
+                
+                ip_location="${country} ${region} ${city} ${isp}"
+                [ -n "$as_num" ] && ip_as="$as_num" || ip_as="未知"
+            else
+                ip_location="查询失败"
+                ip_as="未知"
+            fi
+        else
+            ip_location="需要 curl 命令"
+            ip_as="未知"
+        fi
+        
+        # 美化显示
+        echo -e "┌─────────────── 连接源 #${source_num} ───────────────┐"
+        echo -e "│  源IP地址:   ${gl_huang}${clean_ip}${gl_bai}"
+        echo -e "│  IP归属:     ${ip_location}"
+        [ -n "$ip_as" ] && echo -e "│  AS号:       ${ip_as}"
+        echo -e "│  连接数:     ${gl_lv}${count}${gl_bai} 个"
+        echo -e "│  协议类型:   ${protocol_color}✅ ${protocol_type}${gl_bai}"
+        echo -e "└──────────────────────────────────────────┘"
+        echo ""
+        
+        source_num=$((source_num + 1))
     done
-    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     echo ""
     
     # 显示监听端口
