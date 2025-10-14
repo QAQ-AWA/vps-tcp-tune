@@ -1192,8 +1192,10 @@ check_all_inbound_connections() {
     local outbound_count=0
     
     while IFS='|' read -r local_addr peer_addr; do
-        # 提取本地端口
-        local local_port=$(echo "$local_addr" | sed 's/.*[:\]]//')
+        # 提取本地端口（匹配最后一个冒号后的数字）
+        # [::ffff:x.x.x.x]:40001 -> 40001
+        # x.x.x.x:40001 -> 40001
+        local local_port=$(echo "$local_addr" | sed 's/.*://')
         
         # 检查是否在监听端口列表中
         if echo "$listen_ports" | grep -q "^${local_port}$"; then
