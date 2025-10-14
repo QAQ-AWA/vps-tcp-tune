@@ -1149,85 +1149,20 @@ check_all_inbound_connections() {
     echo -e "==========================================${gl_bai}"
     echo ""
     
-    echo -e "${gl_zi}[1/4] 获取所有监听端口...${gl_bai}"
+    echo -e "${gl_zi}[1/3] 获取所有 ESTABLISHED 入站连接...${gl_bai}"
     echo ""
     
-    # 获取所有监听端口列表
-    local listen_ports=$(ss -tln 2>/dev/null | awk 'NR>1 {print $4}' | sed 's/.*://' | sort -u | grep -v "^$")
+    # 获取所有 ESTABLISHED 连接的远程地址（简单版本）
+    local connections=$(ss -tn state established 2>/dev/null | awk 'NR>1 {print $5}' | grep -v "^$")
     
-    if [ -z "$listen_ports" ]; then
-        echo -e "${gl_huang}未检测到监听端口${gl_bai}"
-        echo ""
-        break_end
-        return 1
-    fi
-    
-    local port_count=$(echo "$listen_ports" | wc -l)
-    echo "检测到 ${port_count} 个监听端口"
-    echo ""
-    
-    echo -e "${gl_zi}[2/4] 获取所有 ESTABLISHED 连接...${gl_bai}"
-    echo ""
-    
-    # 获取所有 ESTABLISHED 连接（本地地址:端口 + 远程地址:端口）
-    # ss 输出格式：State Recv-Q Send-Q Local_Address:Port Peer_Address:Port
-    local all_connections=$(ss -tn state established 2>/dev/null | awk 'NR>1 {print $4"|"$5}')
-    
-    if [ -z "$all_connections" ]; then
+    if [ -z "$connections" ]; then
         echo -e "${gl_huang}未发现任何活跃连接${gl_bai}"
         echo ""
         break_end
         return 1
     fi
     
-    local total_count=$(echo "$all_connections" | wc -l)
-    echo "总连接数: ${total_count}"
-    echo ""
-    
-    echo -e "${gl_zi}[3/4] 过滤真正的入站连接...${gl_bai}"
-    echo ""
-    
-    # 只保留本地端口在监听列表中的连接（真正的入站连接）
-    local connections=""
-    local outbound_count=0
-    
-    while IFS='|' read -r local_addr peer_addr; do
-        # 提取本地端口（匹配最后一个冒号后的数字）
-        # [::ffff:x.x.x.x]:40001 -> 40001
-        # x.x.x.x:40001 -> 40001
-        local local_port=$(echo "$local_addr" | sed 's/.*://')
-        
-        # 检查是否在监听端口列表中
-        if echo "$listen_ports" | grep -q "^${local_port}$"; then
-            # 这是入站连接，保存远程地址
-            connections="${connections}${peer_addr}"$'\n'
-        else
-            outbound_count=$((outbound_count + 1))
-        fi
-    done <<< "$all_connections"
-    
-    # 去除空行
-    connections=$(echo "$connections" | grep -v "^$")
-    
-    if [ -z "$connections" ]; then
-        echo -e "${gl_huang}未发现入站连接（只有 ${outbound_count} 个出站连接）${gl_bai}"
-        echo ""
-        echo "提示："
-        echo "  - 入站连接：外部连接到本机监听端口"
-        echo "  - 出站连接：本机主动连接外部服务"
-        echo ""
-        echo "监听端口列表："
-        echo "$listen_ports" | head -10
-        echo ""
-        break_end
-        return 1
-    fi
-    
-    local inbound_count=$(echo "$connections" | wc -l)
-    echo "入站连接: ${inbound_count} | 出站连接: ${outbound_count}"
-    echo ""
-    
-    echo -e "${gl_zi}[4/4] 分析连接协议类型并生成报告...${gl_bai}"
+    echo -e "${gl_zi}[2/3] 分析连接协议类型...${gl_bai}"
     echo ""
     
     # 统计 IPv4 和 IPv6 连接
@@ -1245,6 +1180,9 @@ check_all_inbound_connections() {
     # 提取唯一的源 IP（去重）
     local unique_sources=$(echo "$connections_no_port" | sort -u)
     local source_count=$(echo "$unique_sources" | wc -l)
+    
+    echo -e "${gl_zi}[3/3] 生成统计报告...${gl_bai}"
+    echo ""
     
     echo -e "${gl_kjlan}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${gl_bai}"
     echo -e "            连接统计总览"
