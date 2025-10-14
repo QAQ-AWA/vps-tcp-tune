@@ -787,11 +787,32 @@ analyze_realm_connections() {
     echo "正在扫描所有活跃连接..."
     echo ""
     
-    # 获取所有 realm 相关的连接
-    local realm_connections=$(ss -tnp 2>/dev/null | grep "realm" | grep "ESTAB")
+    # 获取所有 realm 相关的连接（优先使用 PID 精确匹配）
+    local realm_connections=$(ss -tnp 2>/dev/null | grep "pid=${realm_pid}" | grep "ESTAB")
+    
+    # 如果通过 PID 没找到，尝试通过进程名查找
+    if [ -z "$realm_connections" ]; then
+        realm_connections=$(ss -tnp 2>/dev/null | grep -i "realm" | grep "ESTAB")
+    fi
     
     if [ -z "$realm_connections" ]; then
         echo -e "${gl_huang}⚠️  未发现活跃连接${gl_bai}"
+        echo ""
+        echo -e "${gl_zi}调试信息：${gl_bai}"
+        echo "尝试查看 Realm 进程的所有连接："
+        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+        ss -tnp 2>/dev/null | grep "pid=${realm_pid}" | head -10
+        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+        echo ""
+        echo "可能原因："
+        echo "  1. Realm 转发服务刚启动，还没有客户端连接"
+        echo "  2. 客户端暂时断开连接"
+        echo "  3. Realm 配置中没有活跃的转发规则"
+        echo ""
+        echo "建议操作："
+        echo "  - 使用客户端连接后再运行此工具"
+        echo "  - 检查 Realm 配置: cat /etc/realm/config.toml"
+        echo "  - 查看 Realm 日志: journalctl -u realm -f"
         echo ""
         break_end
         return 1
