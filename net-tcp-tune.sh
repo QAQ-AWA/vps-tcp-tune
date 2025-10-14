@@ -1169,8 +1169,8 @@ check_all_inbound_connections() {
     echo -e "${gl_zi}[2/4] 获取所有 ESTABLISHED 连接...${gl_bai}"
     echo ""
     
-    # 获取所有 ESTABLISHED 连接
-    local all_connections=$(ss -tn state established 2>/dev/null | awk 'NR>1 {print $3}')
+    # 获取所有 ESTABLISHED 连接（本地地址:端口 + 远程地址:端口）
+    local all_connections=$(ss -tn state established 2>/dev/null | awk 'NR>1 {print $3"|"$4}')
     
     if [ -z "$all_connections" ]; then
         echo -e "${gl_huang}未发现任何活跃连接${gl_bai}"
@@ -1179,34 +1179,49 @@ check_all_inbound_connections() {
         return 1
     fi
     
+    local total_count=$(echo "$all_connections" | wc -l)
+    echo "总连接数: ${total_count}"
+    echo ""
+    
     echo -e "${gl_zi}[3/4] 过滤真正的入站连接...${gl_bai}"
     echo ""
     
     # 只保留本地端口在监听列表中的连接（真正的入站连接）
     local connections=""
-    for conn in $all_connections; do
+    local outbound_count=0
+    
+    while IFS='|' read -r local_addr peer_addr; do
         # 提取本地端口
-        local local_port=$(echo "$conn" | sed 's/.*[:\]]//')
+        local local_port=$(echo "$local_addr" | sed 's/.*[:\]]//')
         
         # 检查是否在监听端口列表中
         if echo "$listen_ports" | grep -q "^${local_port}$"; then
-            connections="${connections}${conn}"$'\n'
+            # 这是入站连接，保存远程地址
+            connections="${connections}${peer_addr}"$'\n'
+        else
+            outbound_count=$((outbound_count + 1))
         fi
-    done
+    done <<< "$all_connections"
     
     # 去除空行
     connections=$(echo "$connections" | grep -v "^$")
     
     if [ -z "$connections" ]; then
-        echo -e "${gl_huang}未发现入站连接（可能只有出站连接）${gl_bai}"
+        echo -e "${gl_huang}未发现入站连接（只有 ${outbound_count} 个出站连接）${gl_bai}"
+        echo ""
+        echo "提示："
+        echo "  - 入站连接：外部连接到本机监听端口"
+        echo "  - 出站连接：本机主动连接外部服务"
+        echo ""
+        echo "监听端口列表："
+        echo "$listen_ports" | head -10
         echo ""
         break_end
         return 1
     fi
     
     local inbound_count=$(echo "$connections" | wc -l)
-    local total_count=$(echo "$all_connections" | wc -l)
-    echo "总连接数: ${total_count} | 入站连接: ${inbound_count} | 出站连接: $((total_count - inbound_count))"
+    echo "入站连接: ${inbound_count} | 出站连接: ${outbound_count}"
     echo ""
     
     echo -e "${gl_zi}[4/4] 分析连接协议类型并生成报告...${gl_bai}"
