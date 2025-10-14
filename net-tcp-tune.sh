@@ -1141,6 +1141,90 @@ check_inbound_connections() {
     break_end
 }
 
+# 自动检测所有入站连接
+check_all_inbound_connections() {
+    clear
+    echo -e "${gl_kjlan}=========================================="
+    echo "自动检测所有入站连接"
+    echo -e "==========================================${gl_bai}"
+    echo ""
+    
+    echo -e "${gl_zi}[1/3] 获取所有 ESTABLISHED 入站连接...${gl_bai}"
+    echo ""
+    
+    # 获取所有 ESTABLISHED 连接，按源 IP 统计
+    local connections=$(ss -tn state established 2>/dev/null | awk 'NR>1 {print $4}' | grep -v "^$")
+    
+    if [ -z "$connections" ]; then
+        echo -e "${gl_huang}未发现任何活跃连接${gl_bai}"
+        echo ""
+        break_end
+        return 1
+    fi
+    
+    echo -e "${gl_zi}[2/3] 分析连接协议类型...${gl_bai}"
+    echo ""
+    
+    # 统计 IPv4 和 IPv6 连接
+    local ipv4_connections=$(echo "$connections" | grep -v ":" | wc -l)
+    local ipv6_connections=$(echo "$connections" | grep -c ":")
+    local total_connections=$(echo "$connections" | wc -l)
+    
+    # 提取唯一的源 IP（去重）
+    local unique_sources=$(echo "$connections" | sed 's/:[0-9]*$//' | sort -u)
+    local source_count=$(echo "$unique_sources" | wc -l)
+    
+    echo -e "${gl_zi}[3/3] 生成统计报告...${gl_bai}"
+    echo ""
+    
+    echo -e "${gl_kjlan}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${gl_bai}"
+    echo -e "            连接统计总览"
+    echo -e "${gl_kjlan}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${gl_bai}"
+    echo ""
+    echo -e "  • 总连接数:       ${gl_lv}${total_connections}${gl_bai}"
+    echo -e "  • 唯一源IP数:     ${gl_huang}${source_count}${gl_bai}"
+    echo -e "  • IPv4 连接:      ${gl_lv}${ipv4_connections}${gl_bai}"
+    echo -e "  • IPv6 连接:      ${ipv6_connections}"
+    echo ""
+    
+    if [ "$ipv6_connections" -eq 0 ]; then
+        echo -e "  ${gl_lv}✅ 100% 使用 IPv4 链路${gl_bai}"
+    else
+        local ipv4_percent=$((ipv4_connections * 100 / total_connections))
+        local ipv6_percent=$((ipv6_connections * 100 / total_connections))
+        echo -e "  ${gl_huang}⚠️  混合链路: IPv4 ${ipv4_percent}% | IPv6 ${ipv6_percent}%${gl_bai}"
+    fi
+    
+    echo ""
+    echo -e "${gl_kjlan}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${gl_bai}"
+    echo ""
+    
+    # 显示 Top 10 源 IP
+    echo -e "${gl_zi}Top 10 连接源（按连接数排序）：${gl_bai}"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo "$connections" | sed 's/:[0-9]*$//' | sort | uniq -c | sort -rn | head -10 | while read count ip; do
+        # 判断是 IPv4 还是 IPv6
+        if echo "$ip" | grep -q ":"; then
+            echo -e "  ${count} 个连接 ← ${gl_huang}${ip}${gl_bai} ${gl_hong}[IPv6]${gl_bai}"
+        else
+            echo -e "  ${count} 个连接 ← ${gl_lv}${ip}${gl_bai} ${gl_lv}[IPv4]${gl_bai}"
+        fi
+    done
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo ""
+    
+    # 显示监听端口
+    echo -e "${gl_zi}本地监听端口（Top 5）：${gl_bai}"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    ss -tln 2>/dev/null | awk 'NR>1 {print $4}' | sed 's/.*://' | sort | uniq -c | sort -rn | head -5 | while read count port; do
+        echo -e "  端口 ${gl_huang}${port}${gl_bai} - ${count} 个监听"
+    done
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo ""
+    
+    break_end
+}
+
 # IPv4/IPv6 连接检测主菜单
 check_ipv4v6_connections() {
     while true; do
@@ -1149,14 +1233,19 @@ check_ipv4v6_connections() {
         echo ""
         echo "此工具用于检测网络连接使用的是IPv4还是IPv6"
         echo "------------------------------------------------"
-        echo "1. 出站检测（检测本机到目标服务器的连接）"
-        echo "2. 入站检测（检测来自源服务器的连接）"
+        echo "1. 自动检测所有入站连接（推荐，无需输入IP）"
+        echo "2. 出站检测（检测本机到目标服务器的连接）"
+        echo "3. 入站检测（检测来自指定源服务器的连接）"
         echo "0. 返回主菜单"
         echo "------------------------------------------------"
         read -e -p "请输入选择: " choice
         
         case "$choice" in
             1)
+                # 自动检测所有入站
+                check_all_inbound_connections
+                ;;
+            2)
                 # 出站检测
                 clear
                 echo -e "${gl_kjlan}=== 出站连接检测 ===${gl_bai}"
@@ -1197,7 +1286,7 @@ check_ipv4v6_connections() {
                 # 执行检测
                 check_outbound_connections "$target_ipv4" "$target_ipv6"
                 ;;
-            2)
+            3)
                 # 入站检测
                 clear
                 echo -e "${gl_kjlan}=== 入站连接检测 ===${gl_bai}"
