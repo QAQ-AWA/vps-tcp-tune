@@ -1170,7 +1170,8 @@ check_all_inbound_connections() {
     echo ""
     
     # 获取所有 ESTABLISHED 连接（本地地址:端口 + 远程地址:端口）
-    local all_connections=$(ss -tn state established 2>/dev/null | awk 'NR>1 {print $3"|"$4}')
+    # ss 输出格式：State Recv-Q Send-Q Local_Address:Port Peer_Address:Port
+    local all_connections=$(ss -tn state established 2>/dev/null | awk 'NR>1 {print $4"|"$5}')
     
     if [ -z "$all_connections" ]; then
         echo -e "${gl_huang}未发现任何活跃连接${gl_bai}"
