@@ -1167,14 +1167,18 @@ check_all_inbound_connections() {
     
     # 统计 IPv4 和 IPv6 连接
     # 注意：::ffff: 开头的是 IPv4-mapped IPv6，本质是 IPv4
-    local ipv4_pure=$(echo "$connections" | grep -v ":" | wc -l)
-    local ipv4_mapped=$(echo "$connections" | grep -c "::ffff:")
+    # 先去掉端口号，再统计
+    local connections_no_port=$(echo "$connections" | sed 's/:[0-9]*$//')
+    
+    local ipv4_mapped=$(echo "$connections_no_port" | grep -c "::ffff:")
+    local ipv6_real=$(echo "$connections_no_port" | grep ":" | grep -vc "::ffff:")
+    local ipv4_pure=$(echo "$connections_no_port" | grep -vc ":")
     local ipv4_connections=$((ipv4_pure + ipv4_mapped))
-    local ipv6_connections=$(echo "$connections" | grep ":" | grep -v "::ffff:" | wc -l)
+    local ipv6_connections=$ipv6_real
     local total_connections=$(echo "$connections" | wc -l)
     
     # 提取唯一的源 IP（去重）
-    local unique_sources=$(echo "$connections" | sed 's/:[0-9]*$//' | sort -u)
+    local unique_sources=$(echo "$connections_no_port" | sort -u)
     local source_count=$(echo "$unique_sources" | wc -l)
     
     echo -e "${gl_zi}[3/3] 生成统计报告...${gl_bai}"
