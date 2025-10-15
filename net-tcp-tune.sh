@@ -2600,6 +2600,75 @@ restore_defaults() {
 }
 
 #=============================================================================
+# 内核参数优化 - 星辰大海ヾ优化模式（VLESS Reality/AnyTLS专用）
+#=============================================================================
+
+optimize_xinchendahai() {
+    echo -e "${gl_lv}切换到星辰大海ヾ优化模式...${gl_bai}"
+    echo -e "${gl_zi}针对 VLESS Reality/AnyTLS 节点深度优化${gl_bai}"
+
+    echo -e "${gl_lv}优化文件描述符...${gl_bai}"
+    ulimit -n 1048576
+
+    echo -e "${gl_lv}优化内存管理...${gl_bai}"
+    sysctl -w vm.swappiness=1 2>/dev/null
+    sysctl -w vm.dirty_ratio=15 2>/dev/null
+    sysctl -w vm.dirty_background_ratio=5 2>/dev/null
+    sysctl -w vm.overcommit_memory=1 2>/dev/null
+    sysctl -w vm.min_free_kbytes=65536 2>/dev/null
+    sysctl -w vm.vfs_cache_pressure=50 2>/dev/null
+
+    echo -e "${gl_lv}优化TCP拥塞控制...${gl_bai}"
+    sysctl -w net.ipv4.tcp_congestion_control=bbr 2>/dev/null
+    sysctl -w net.core.default_qdisc=fq 2>/dev/null
+
+    echo -e "${gl_lv}优化TCP连接（TLS握手加速）...${gl_bai}"
+    sysctl -w net.ipv4.tcp_fastopen=3 2>/dev/null
+    sysctl -w net.ipv4.tcp_fin_timeout=30 2>/dev/null
+    sysctl -w net.ipv4.tcp_max_syn_backlog=8192 2>/dev/null
+    sysctl -w net.ipv4.tcp_tw_reuse=1 2>/dev/null
+    sysctl -w net.ipv4.tcp_slow_start_after_idle=0 2>/dev/null
+    sysctl -w net.ipv4.tcp_mtu_probing=2 2>/dev/null
+    sysctl -w net.ipv4.tcp_window_scaling=1 2>/dev/null
+    sysctl -w net.ipv4.tcp_timestamps=1 2>/dev/null
+
+    echo -e "${gl_lv}优化TCP安全/稳态...${gl_bai}"
+    sysctl -w net.ipv4.tcp_syncookies=1 2>/dev/null
+    sysctl -w net.ipv4.tcp_keepalive_time=600 2>/dev/null
+    sysctl -w net.ipv4.tcp_keepalive_intvl=30 2>/dev/null
+    sysctl -w net.ipv4.tcp_keepalive_probes=5 2>/dev/null
+
+    echo -e "${gl_lv}优化TCP缓冲区...${gl_bai}"
+    sysctl -w net.core.rmem_max=16777216 2>/dev/null
+    sysctl -w net.core.wmem_max=16777216 2>/dev/null
+    sysctl -w net.core.rmem_default=262144 2>/dev/null
+    sysctl -w net.core.wmem_default=262144 2>/dev/null
+    sysctl -w net.ipv4.tcp_rmem='4096 87380 16777216' 2>/dev/null
+    sysctl -w net.ipv4.tcp_wmem='4096 65536 16777216' 2>/dev/null
+
+    echo -e "${gl_lv}优化UDP（QUIC支持）...${gl_bai}"
+    sysctl -w net.ipv4.udp_rmem_min=8192 2>/dev/null
+    sysctl -w net.ipv4.udp_wmem_min=8192 2>/dev/null
+
+    echo -e "${gl_lv}优化连接队列...${gl_bai}"
+    sysctl -w net.core.somaxconn=4096 2>/dev/null
+    sysctl -w net.core.netdev_max_backlog=250000 2>/dev/null
+    sysctl -w net.ipv4.ip_local_port_range='1024 65535' 2>/dev/null
+
+    echo -e "${gl_lv}优化CPU设置...${gl_bai}"
+    sysctl -w kernel.sched_autogroup_enabled=0 2>/dev/null
+    sysctl -w kernel.numa_balancing=0 2>/dev/null
+
+    echo -e "${gl_lv}其他优化...${gl_bai}"
+    # 禁用透明大页面，减少延迟
+    echo never > /sys/kernel/mm/transparent_hugepage/enabled 2>/dev/null
+
+    echo ""
+    echo -e "${gl_lv}星辰大海ヾ优化模式设置完成！${gl_bai}"
+    echo -e "${gl_zi}配置特点: TLS握手加速 + QUIC支持 + 大并发优化${gl_bai}"
+}
+
+#=============================================================================
 # 内核参数优化 - 主菜单
 #=============================================================================
 
@@ -2618,6 +2687,7 @@ Kernel_optimize() {
         echo "4. 直播优化模式：       针对直播推流的特殊需求进行优化，减少延迟，提高传输性能。"
         echo "5. 游戏服优化模式：     针对游戏服务器进行优化，提高并发处理能力和响应速度。"
         echo "6. 还原默认设置：       将系统设置还原为默认配置。"
+        echo "7. 星辰大海ヾ优化模式： 针对VLESS Reality/AnyTLS节点深度优化，TLS握手加速+QUIC支持。"
         echo "--------------------"
         echo "0. 返回主菜单"
         echo "--------------------"
@@ -2655,6 +2725,11 @@ Kernel_optimize() {
                 cd ~
                 clear
                 restore_defaults
+                ;;
+            7)
+                cd ~
+                clear
+                optimize_xinchendahai
                 ;;
             0)
                 break
