@@ -4541,9 +4541,40 @@ configure_nginx_proxy() {
                 fi
                 
                 if [ $? -eq 0 ]; then
-                    systemctl enable nginx
-                    systemctl start nginx
                     echo -e "${gl_lv}✅ Nginx 安装成功${gl_bai}"
+                    echo "正在启动 Nginx..."
+                    systemctl enable nginx > /dev/null 2>&1
+                    systemctl start nginx > /dev/null 2>&1
+                    
+                    sleep 2
+                    
+                    # 检查 Nginx 是否真正启动成功
+                    if systemctl is-active --quiet nginx; then
+                        echo -e "${gl_lv}✅ Nginx 启动成功${gl_bai}"
+                    else
+                        echo -e "${gl_hong}❌ Nginx 启动失败${gl_bai}"
+                        echo ""
+                        echo "可能的原因："
+                        echo "  1. 端口 80/443 已被占用"
+                        echo "  2. 配置文件语法错误"
+                        echo ""
+                        echo "查看错误详情："
+                        echo "  systemctl status nginx"
+                        echo "  journalctl -xeu nginx.service"
+                        echo ""
+                        
+                        read -e -p "是否继续配置（需手动修复 Nginx）？(Y/N): " continue_config
+                        case "$continue_config" in
+                            [Yy])
+                                echo -e "${gl_huang}⚠️  继续配置，请稍后手动修复 Nginx 并重启${gl_bai}"
+                                ;;
+                            *)
+                                echo "已取消配置"
+                                break_end
+                                return 1
+                                ;;
+                        esac
+                    fi
                 else
                     echo -e "${gl_hong}❌ Nginx 安装失败${gl_bai}"
                     break_end

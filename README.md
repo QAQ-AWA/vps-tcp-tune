@@ -11,7 +11,13 @@
 ## 🚀 一键安装
 
 ```bash
-bash <(wget -qO- https://raw.githubusercontent.com/Eric86777/vps-tcp-tune/main/net-tcp-tune.sh)
+# 推荐：使用时间戳参数确保获取最新版本（无缓存）
+bash <(curl -fsSL "https://raw.githubusercontent.com/Eric86777/vps-tcp-tune/main/net-tcp-tune.sh?$(date +%s)")
+```
+
+**或使用 wget：**
+```bash
+bash <(wget -qO- "https://raw.githubusercontent.com/Eric86777/vps-tcp-tune/main/net-tcp-tune.sh?$(date +%s)")
 ```
 
 <details>
@@ -23,7 +29,7 @@ bash <(wget -qO- https://raw.githubusercontent.com/Eric86777/vps-tcp-tune/main/n
 
 ```bash
 # 安装别名
-bash <(wget -qO- https://raw.githubusercontent.com/Eric86777/vps-tcp-tune/main/install-alias.sh)
+bash <(curl -fsSL "https://raw.githubusercontent.com/Eric86777/vps-tcp-tune/main/install-alias.sh?$(date +%s)")
 
 # 重新加载配置
 source ~/.bashrc  # 或 source ~/.zshrc
@@ -35,7 +41,7 @@ bbr
 ### 方式3：下载到本地
 
 ```bash
-wget https://raw.githubusercontent.com/Eric86777/vps-tcp-tune/main/net-tcp-tune.sh
+wget -O net-tcp-tune.sh "https://raw.githubusercontent.com/Eric86777/vps-tcp-tune/main/net-tcp-tune.sh?$(date +%s)"
 chmod +x net-tcp-tune.sh
 ./net-tcp-tune.sh
 ```
@@ -62,8 +68,8 @@ chmod +x net-tcp-tune.sh
 <summary><b>【步骤1】安装 XanMod 内核 + BBR v3</b></summary>
 
 ```bash
-# 运行脚本
-bash <(wget -qO- https://raw.githubusercontent.com/Eric86777/vps-tcp-tune/main/net-tcp-tune.sh)
+# 运行脚本（无缓存）
+bash <(curl -fsSL "https://raw.githubusercontent.com/Eric86777/vps-tcp-tune/main/net-tcp-tune.sh?$(date +%s)")
 
 # 选择菜单
 选择 1 → 安装 XanMod 内核 + BBR v3
@@ -80,8 +86,8 @@ reboot
 <summary><b>【步骤2】CAKE 队列调优</b></summary>
 
 ```bash
-# 再次运行脚本
-bash <(wget -qO- https://raw.githubusercontent.com/Eric86777/vps-tcp-tune/main/net-tcp-tune.sh)
+# 再次运行脚本（无缓存）
+bash <(curl -fsSL "https://raw.githubusercontent.com/Eric86777/vps-tcp-tune/main/net-tcp-tune.sh?$(date +%s)")
 
 # 选择菜单（⚠️ 注意序号变化）
 选择 3 → NS论坛CAKE调优
@@ -98,8 +104,8 @@ reboot
 <summary><b>【步骤3】高性能模式优化</b></summary>
 
 ```bash
-# 再次运行脚本
-bash <(wget -qO- https://raw.githubusercontent.com/Eric86777/vps-tcp-tune/main/net-tcp-tune.sh)
+# 再次运行脚本（无缓存）
+bash <(curl -fsSL "https://raw.githubusercontent.com/Eric86777/vps-tcp-tune/main/net-tcp-tune.sh?$(date +%s)")
 
 # 选择菜单
 选择 4 → 科技lion高性能模式
