@@ -4307,7 +4307,6 @@ services:
       SUB_STORE_BACKEND_API_PORT: $api_port
       SUB_STORE_BACKEND_MERGE: true
       SUB_STORE_FRONTEND_BACKEND_PATH: /$access_path
-      PORT: $http_port
       HOST: 127.0.0.1
     volumes:
       - $data_dir:/opt/app/data
@@ -4324,8 +4323,7 @@ EOF
         echo -e "${gl_zi}实例信息：${gl_bai}"
         echo "  - 实例编号: $instance_num"
         echo "  - 容器名称: sub-store-$instance_num"
-        echo "  - 前端端口: $http_port（监听 127.0.0.1）"
-        echo "  - 后端端口: $api_port（监听 127.0.0.1）"
+        echo "  - 服务端口: $api_port（前后端共用，监听 127.0.0.1）"
         echo "  - 访问路径: /$access_path"
         echo "  - 数据目录: $data_dir"
         echo "  - 配置文件: $config_file"
@@ -4357,9 +4355,9 @@ server {
     ssl_ciphers HIGH:!aNULL:!MD5;
     ssl_prefer_server_ciphers on;
     
-    # 前端页面（HTTP-META）
+    # 前端页面（HTTP-META）和后端 API（共用端口）
     location / {
-        proxy_pass http://127.0.0.1:HTTP_PORT_PLACEHOLDER;
+        proxy_pass http://127.0.0.1:API_PORT_PLACEHOLDER;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
@@ -4369,15 +4367,6 @@ server {
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection "upgrade";
-    }
-    
-    # 后端 API
-    location /ACCESS_PATH_PLACEHOLDER {
-        proxy_pass http://127.0.0.1:API_PORT_PLACEHOLDER;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
     }
 }
 
@@ -4390,7 +4379,6 @@ server {
 NGINXEOF
         
         # 替换占位符
-        sed -i "s/HTTP_PORT_PLACEHOLDER/$http_port/g" "$nginx_conf"
         sed -i "s/API_PORT_PLACEHOLDER/$api_port/g" "$nginx_conf"
         sed -i "s|ACCESS_PATH_PLACEHOLDER|$access_path|g" "$nginx_conf"
         
@@ -4431,9 +4419,9 @@ ingress:
     path: /$access_path
     service: http://127.0.0.1:$api_port
   
-  # 前端页面路由（通配所有其他请求）
+  # 前端页面路由（通配所有其他请求，与后端共用端口）
   - hostname: sub.你的域名.com
-    service: http://127.0.0.1:$http_port
+    service: http://127.0.0.1:$api_port
   
   # 默认规则（必须）
   - service: http_status:404
@@ -5123,9 +5111,9 @@ ingress:
     path: /$access_path
     service: http://127.0.0.1:$api_port
   
-  # 前端页面路由（通配所有其他请求）
+  # 前端页面路由（通配所有其他请求，与后端共用端口）
   - hostname: $domain
-    service: http://127.0.0.1:$http_port
+    service: http://127.0.0.1:$api_port
   
   # 默认规则（必须）
   - service: http_status:404
