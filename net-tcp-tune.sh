@@ -4715,56 +4715,62 @@ configure_nginx_proxy() {
                                     [Yy])
                                         echo "正在停止 $port_80_process..."
                                         
-                                        local stopped=false
-                                        
-                                        # 如果是已知服务，使用 systemctl 或专用命令
-                                        if [ "$port_80_service" = "nginx" ] || [ "$port_80_service" = "apache2" ] || [ "$port_80_service" = "caddy" ]; then
-                                            systemctl stop "$port_80_service" > /dev/null 2>&1
-                                            if [ $? -eq 0 ]; then
-                                                echo -e "${gl_lv}✅ 已停止 $port_80_service${gl_bai}"
-                                                stopped=true
-                                            fi
+                                        # 先尝试优雅停止
+                                        if [ "$port_80_service" = "nginx" ]; then
+                                            systemctl stop nginx > /dev/null 2>&1
                                         elif [ "$port_80_service" = "openresty" ]; then
-                                            # OpenResty 特殊处理
-                                            # 尝试多种停止方法
-                                            if systemctl stop openresty > /dev/null 2>&1; then
-                                                echo -e "${gl_lv}✅ 已停止 openresty (systemctl)${gl_bai}"
-                                                stopped=true
-                                            elif command -v openresty &>/dev/null && openresty -s quit > /dev/null 2>&1; then
-                                                echo -e "${gl_lv}✅ 已停止 openresty (openresty -s quit)${gl_bai}"
-                                                stopped=true
-                                            elif [ -f /usr/local/openresty/nginx/sbin/nginx ]; then
-                                                /usr/local/openresty/nginx/sbin/nginx -s quit > /dev/null 2>&1
-                                                echo -e "${gl_lv}✅ 已停止 openresty (nginx -s quit)${gl_bai}"
-                                                stopped=true
-                                            fi
-                                        fi
-                                        
-                                        # 如果上述方法都失败，尝试 killall
-                                        if [ "$stopped" = false ]; then
-                                            if [ "$port_80_service" = "openresty" ]; then
-                                                echo -e "${gl_huang}⚠️  systemctl/命令停止失败，尝试 killall...${gl_bai}"
-                                                killall -9 openresty > /dev/null 2>&1
-                                                sleep 2
-                                                stopped=true
-                                            else
-                                                echo -e "${gl_huang}⚠️  systemctl 停止失败，尝试直接终止进程...${gl_bai}"
-                                                kill "$port_80_pid" > /dev/null 2>&1
-                                                sleep 1
-                                                
-                                                # 检查是否成功
-                                                if ps -p "$port_80_pid" > /dev/null 2>&1; then
-                                                    echo -e "${gl_huang}⚠️  进程未停止，尝试强制终止...${gl_bai}"
-                                                    kill -9 "$port_80_pid" > /dev/null 2>&1
-                                                    sleep 1
-                                                fi
-                                                
-                                                echo -e "${gl_lv}✅ 已停止进程 $port_80_pid${gl_bai}"
-                                                stopped=true
-                                            fi
+                                            systemctl stop openresty > /dev/null 2>&1 || openresty -s quit > /dev/null 2>&1 || /usr/local/openresty/nginx/sbin/nginx -s quit > /dev/null 2>&1
+                                        elif [ "$port_80_service" = "apache2" ]; then
+                                            systemctl stop apache2 > /dev/null 2>&1
+                                        elif [ "$port_80_service" = "caddy" ]; then
+                                            systemctl stop caddy > /dev/null 2>&1
                                         fi
                                         
                                         sleep 2
+                                        
+                                        # 检查端口是否释放，如果没有，强制杀死所有相关进程
+                                        if netstat -tlnp 2>/dev/null | grep -q ":80 " || ss -tlnp 2>/dev/null | grep -q ":80 "; then
+                                            echo -e "${gl_huang}⚠️  优雅停止失败，强制终止所有相关进程...${gl_bai}"
+                                            
+                                            # 根据进程名强制杀死
+                                            case "$port_80_process" in
+                                                nginx|nginx*)
+                                                    killall -9 nginx > /dev/null 2>&1
+                                                    ;;
+                                                openresty)
+                                                    killall -9 openresty > /dev/null 2>&1
+                                                    killall -9 nginx > /dev/null 2>&1
+                                                    ;;
+                                                apache2|httpd)
+                                                    killall -9 apache2 > /dev/null 2>&1
+                                                    killall -9 httpd > /dev/null 2>&1
+                                                    ;;
+                                                caddy)
+                                                    killall -9 caddy > /dev/null 2>&1
+                                                    ;;
+                                                *)
+                                                    # 通用方法：杀死所有占用 80 端口的进程
+                                                    if command -v fuser &>/dev/null; then
+                                                        fuser -k 80/tcp > /dev/null 2>&1
+                                                    else
+                                                        # 获取所有占用 80 端口的 PID 并杀死
+                                                        local pids=$(netstat -tlnp 2>/dev/null | grep ":80 " | awk '{print $7}' | cut -d'/' -f1 | sort -u)
+                                                        if [ -z "$pids" ]; then
+                                                            pids=$(ss -tlnp 2>/dev/null | grep ":80 " | grep -oP 'pid=\K[0-9]+' | sort -u)
+                                                        fi
+                                                        
+                                                        for pid in $pids; do
+                                                            [ -n "$pid" ] && kill -9 "$pid" > /dev/null 2>&1
+                                                        done
+                                                    fi
+                                                    ;;
+                                            esac
+                                            
+                                            sleep 2
+                                        fi
+                                        
+                                        echo -e "${gl_lv}✅ 已停止 $port_80_process${gl_bai}"
+                                        sleep 1
                                         
                                         # 再次检查端口
                                         if netstat -tlnp 2>/dev/null | grep -q ":80 " || ss -tlnp 2>/dev/null | grep -q ":80 "; then
