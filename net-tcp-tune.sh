@@ -271,25 +271,70 @@ set_ipv4_priority() {
     echo -e "${gl_kjlan}=== 设置IPv4优先 ===${gl_bai}"
     echo ""
 
-    # 检查 gai.conf 是否存在
-    if [ ! -f /etc/gai.conf ]; then
-        echo -e "${gl_huang}警告: /etc/gai.conf 文件不存在${gl_bai}"
-        echo "正在创建配置文件..."
-        touch /etc/gai.conf
+    # 备份原配置文件并记录原始状态
+    if [ -f /etc/gai.conf ]; then
+        cp /etc/gai.conf /etc/gai.conf.bak.$(date +%Y%m%d_%H%M%S)
+        echo "已备份原配置文件到 /etc/gai.conf.bak.*"
+        # 记录原先存在文件
+        echo "existed" > /etc/gai.conf.original_state
+    else
+        # 记录原先不存在文件
+        echo "not_existed" > /etc/gai.conf.original_state
+        echo "原先无配置文件，已记录原始状态"
     fi
 
     echo "正在设置 IPv4 优先..."
 
-    # 启用 IPv4 优先配置
-    sed -i 's/#precedence ::ffff:0:0\/96  100/precedence ::ffff:0:0\/96  100/' /etc/gai.conf
+    # 创建完整的 IPv4 优先配置
+    cat > /etc/gai.conf << 'EOF'
+# Configuration for getaddrinfo(3).
+#
+# 设置 IPv4 优先
+
+# IPv4 addresses
+precedence ::ffff:0:0/96  100
+
+# IPv6 addresses
+precedence ::/0           10
+
+# IPv4-mapped IPv6 addresses
+precedence ::1/128        50
+
+# Link-local addresses
+precedence fe80::/10      1
+precedence fec0::/10      1
+precedence fc00::/7       1
+
+# Site-local addresses (deprecated)
+precedence 2002::/16      30
+EOF
+
+    # 刷新 nscd 缓存（如果安装了）
+    if command -v nscd &> /dev/null; then
+        systemctl restart nscd 2>/dev/null || service nscd restart 2>/dev/null || true
+        echo "已刷新 nscd DNS 缓存"
+    fi
+
+    # 刷新 systemd-resolved 缓存（如果使用）
+    if command -v resolvectl &> /dev/null; then
+        resolvectl flush-caches 2>/dev/null || true
+        echo "已刷新 systemd-resolved DNS 缓存"
+    fi
 
     echo -e "${gl_lv}✅ IPv4 优先已设置${gl_bai}"
     echo ""
     echo "当前出口 IP 地址："
     echo "------------------------------------------------"
-    curl ip.sb
+    # 使用 -4 参数强制 IPv4
+    curl -4 ip.sb 2>/dev/null || curl ip.sb
     echo ""
     echo "------------------------------------------------"
+    echo ""
+    echo -e "${gl_huang}提示：${gl_bai}"
+    echo "1. 如果仍显示 IPv6 地址，可以在 curl 命令中使用 -4 参数强制 IPv4"
+    echo "   例如: curl -4 ip.sb"
+    echo "2. 某些应用可能需要重启才能应用新配置"
+    echo ""
 
     break_end
 }
@@ -299,26 +344,216 @@ set_ipv6_priority() {
     echo -e "${gl_kjlan}=== 设置IPv6优先 ===${gl_bai}"
     echo ""
 
-    # 检查 gai.conf 是否存在
-    if [ ! -f /etc/gai.conf ]; then
-        echo -e "${gl_huang}警告: /etc/gai.conf 文件不存在${gl_bai}"
-        echo "正在创建配置文件..."
-        touch /etc/gai.conf
+    # 备份原配置文件并记录原始状态
+    if [ -f /etc/gai.conf ]; then
+        cp /etc/gai.conf /etc/gai.conf.bak.$(date +%Y%m%d_%H%M%S)
+        echo "已备份原配置文件到 /etc/gai.conf.bak.*"
+        # 记录原先存在文件
+        echo "existed" > /etc/gai.conf.original_state
+    else
+        # 记录原先不存在文件
+        echo "not_existed" > /etc/gai.conf.original_state
+        echo "原先无配置文件，已记录原始状态"
     fi
 
     echo "正在设置 IPv6 优先..."
 
-    # 禁用 IPv4 优先配置（即设置 IPv6 优先）
-    sed -i 's/precedence ::ffff:0:0\/96  100/#precedence ::ffff:0:0\/96  100/' /etc/gai.conf
+    # 创建完整的 IPv6 优先配置
+    cat > /etc/gai.conf << 'EOF'
+# Configuration for getaddrinfo(3).
+#
+# 设置 IPv6 优先
+
+# IPv6 addresses (highest priority)
+precedence ::/0           100
+
+# IPv4 addresses (lower priority)
+precedence ::ffff:0:0/96  10
+
+# IPv4-mapped IPv6 addresses
+precedence ::1/128        50
+
+# Link-local addresses
+precedence fe80::/10      1
+precedence fec0::/10      1
+precedence fc00::/7       1
+
+# Site-local addresses (deprecated)
+precedence 2002::/16      30
+EOF
+
+    # 刷新 nscd 缓存（如果安装了）
+    if command -v nscd &> /dev/null; then
+        systemctl restart nscd 2>/dev/null || service nscd restart 2>/dev/null || true
+        echo "已刷新 nscd DNS 缓存"
+    fi
+
+    # 刷新 systemd-resolved 缓存（如果使用）
+    if command -v resolvectl &> /dev/null; then
+        resolvectl flush-caches 2>/dev/null || true
+        echo "已刷新 systemd-resolved DNS 缓存"
+    fi
 
     echo -e "${gl_lv}✅ IPv6 优先已设置${gl_bai}"
     echo ""
     echo "当前出口 IP 地址："
     echo "------------------------------------------------"
-    curl ip.sb
+    # 使用 -6 参数强制 IPv6
+    curl -6 ip.sb 2>/dev/null || curl ip.sb
     echo ""
     echo "------------------------------------------------"
+    echo ""
+    echo -e "${gl_huang}提示：${gl_bai}"
+    echo "1. 如果仍显示 IPv4 地址，可以在 curl 命令中使用 -6 参数强制 IPv6"
+    echo "   例如: curl -6 ip.sb"
+    echo "2. 某些应用可能需要重启才能应用新配置"
+    echo ""
 
+    break_end
+}
+
+manage_ip_priority() {
+    while true; do
+        clear
+        echo -e "${gl_kjlan}=== 设置IPv4/IPv6优先级 ===${gl_bai}"
+        echo ""
+        echo "1. 设置IPv4优先"
+        echo "2. 设置IPv6优先"
+        echo "3. 恢复IP优先级配置"
+        echo "0. 返回主菜单"
+        echo ""
+        echo "------------------------------------------------"
+        read -p "请选择操作 [0-3]: " ip_priority_choice
+        echo ""
+        
+        case $ip_priority_choice in
+            1)
+                set_ipv4_priority
+                ;;
+            2)
+                set_ipv6_priority
+                ;;
+            3)
+                restore_gai_conf
+                ;;
+            0)
+                break
+                ;;
+            *)
+                echo -e "${gl_hong}无效选择，请重新输入${gl_bai}"
+                sleep 2
+                ;;
+        esac
+    done
+}
+
+restore_gai_conf() {
+    clear
+    echo -e "${gl_kjlan}=== 恢复 IP 优先级配置 ===${gl_bai}"
+    echo ""
+
+    # 检查是否有原始状态记录
+    if [ ! -f /etc/gai.conf.original_state ]; then
+        echo -e "${gl_huang}⚠️  未找到原始状态记录${gl_bai}"
+        echo "可能的原因："
+        echo "1. 从未使用过本脚本设置过 IPv4/IPv6 优先级"
+        echo "2. 原始状态记录文件已被删除"
+        echo ""
+        
+        # 列出所有备份文件
+        if ls /etc/gai.conf.bak.* 2>/dev/null; then
+            echo "发现以下备份文件："
+            ls -lh /etc/gai.conf.bak.* 2>/dev/null
+            echo ""
+            echo "是否要手动恢复最新的备份？[y/n]"
+            read -p "请选择: " manual_restore
+            if [[ "$manual_restore" == "y" || "$manual_restore" == "Y" ]]; then
+                latest_backup=$(ls -t /etc/gai.conf.bak.* 2>/dev/null | head -1)
+                if [ -n "$latest_backup" ]; then
+                    cp "$latest_backup" /etc/gai.conf
+                    echo -e "${gl_lv}✅ 已从备份恢复: $latest_backup${gl_bai}"
+                fi
+            fi
+        else
+            echo "也未找到任何备份文件。"
+            echo ""
+            echo "是否要删除当前的 gai.conf 文件（恢复到系统默认）？[y/n]"
+            read -p "请选择: " delete_conf
+            if [[ "$delete_conf" == "y" || "$delete_conf" == "Y" ]]; then
+                rm -f /etc/gai.conf
+                echo -e "${gl_lv}✅ 已删除 gai.conf，系统将使用默认配置${gl_bai}"
+            fi
+        fi
+    else
+        # 读取原始状态
+        original_state=$(cat /etc/gai.conf.original_state)
+        
+        if [ "$original_state" == "not_existed" ]; then
+            echo "检测到原先${gl_huang}没有${gl_bai} gai.conf 文件"
+            echo "恢复操作将${gl_hong}删除${gl_bai}当前的 gai.conf 文件"
+            echo ""
+            echo "确认要恢复到原始状态吗？[y/n]"
+            read -p "请选择: " confirm
+            
+            if [[ "$confirm" == "y" || "$confirm" == "Y" ]]; then
+                rm -f /etc/gai.conf
+                rm -f /etc/gai.conf.original_state
+                echo -e "${gl_lv}✅ 已删除 gai.conf，恢复到原始状态（无配置文件）${gl_bai}"
+                
+                # 刷新缓存
+                if command -v nscd &> /dev/null; then
+                    systemctl restart nscd 2>/dev/null || service nscd restart 2>/dev/null || true
+                fi
+                if command -v resolvectl &> /dev/null; then
+                    resolvectl flush-caches 2>/dev/null || true
+                fi
+            else
+                echo "已取消恢复操作"
+            fi
+            
+        elif [ "$original_state" == "existed" ]; then
+            echo "检测到原先${gl_lv}存在${gl_bai} gai.conf 文件"
+            
+            # 查找最新的备份
+            latest_backup=$(ls -t /etc/gai.conf.bak.* 2>/dev/null | head -1)
+            
+            if [ -n "$latest_backup" ]; then
+                echo "找到备份文件: $latest_backup"
+                echo ""
+                echo "确认要从备份恢复吗？[y/n]"
+                read -p "请选择: " confirm
+                
+                if [[ "$confirm" == "y" || "$confirm" == "Y" ]]; then
+                    cp "$latest_backup" /etc/gai.conf
+                    rm -f /etc/gai.conf.original_state
+                    echo -e "${gl_lv}✅ 已从备份恢复配置${gl_bai}"
+                    
+                    # 刷新缓存
+                    if command -v nscd &> /dev/null; then
+                        systemctl restart nscd 2>/dev/null || service nscd restart 2>/dev/null || true
+                        echo "已刷新 nscd DNS 缓存"
+                    fi
+                    if command -v resolvectl &> /dev/null; then
+                        resolvectl flush-caches 2>/dev/null || true
+                        echo "已刷新 systemd-resolved DNS 缓存"
+                    fi
+                    
+                    echo ""
+                    echo "当前出口 IP 地址："
+                    echo "------------------------------------------------"
+                    curl ip.sb
+                    echo ""
+                    echo "------------------------------------------------"
+                else
+                    echo "已取消恢复操作"
+                fi
+            else
+                echo -e "${gl_hong}错误: 未找到备份文件${gl_bai}"
+            fi
+        fi
+    fi
+    
+    echo ""
     break_end
 }
 
@@ -3005,54 +3240,7 @@ show_main_menu() {
         echo "6. 虚拟内存管理"
         echo "7. IPv6管理（临时/永久禁用/取消）"
         echo "8. 设置临时SOCKS5代理"
-        echo "9. 设置IPv4优先"
-        echo "10. 设置IPv6优先"
-        echo "11. IPv4/IPv6连接检测"
-        echo ""
-        echo -e "${gl_kjlan}[Xray配置]${gl_bai}"
-        echo "12. Realm转发连接分析"
-        echo "13. 查看Xray配置"
-        echo "14. 设置Xray IPv6出站"
-        echo "15. 恢复Xray默认配置"
-        echo ""
-        echo -e "${gl_kjlan}[系统信息]${gl_bai}"
-        echo "16. 查看详细状态"
-        echo ""
-        echo -e "${gl_kjlan}[服务器检测合集]${gl_bai}"
-        echo "17. NS一键检测脚本"
-        echo "18. 服务器带宽测试"
-        echo "19. 三网回程路由测试"
-        echo "20. IP质量检测"
-        echo "21. IP质量检测-仅IPv4"
-        echo "22. 网络延迟质量检测"
-        echo "23. 国际互联速度测试"
-        echo "24. IP媒体/AI解锁检测"
-        echo ""
-        echo -e "${gl_kjlan}[脚本合集]${gl_bai}"
-        echo "25. PF_realm转发脚本"
-        echo "26. 御坂美琴一键双协议"
-        echo "27. F佬一键sing box脚本"
-        echo "28. 科技lion脚本"
-        echo "29. NS论坛的cake调优"
-        echo "30. 酷雪云脚本"
-        echo ""
-        echo -e "${gl_kjlan}[代理部署]${gl_bai}"
-        echo "31. 一键部署SOCKS5代理"
-        echo "32. Sub-Store多实例管理"
-    else
-        echo "1. 安装 XanMod 内核 + BBR v3"
-        echo ""
-        echo -e "${gl_kjlan}[BBR TCP调优]${gl_bai}"
-        echo "2. NS论坛CAKE调优"
-        echo "3. 科技lion高性能模式内核参数优化"
-        echo "4. BBR 直连/落地优化（智能带宽检测）"
-        echo ""
-        echo -e "${gl_kjlan}[系统设置]${gl_bai}"
-        echo "5. 虚拟内存管理"
-        echo "6. IPv6管理（临时/永久禁用/取消）"
-        echo "7. 设置临时SOCKS5代理"
-        echo "8. 设置IPv4优先"
-        echo "9. 设置IPv6优先"
+        echo "9. 设置IPv4/IPv6优先级"
         echo "10. IPv4/IPv6连接检测"
         echo ""
         echo -e "${gl_kjlan}[Xray配置]${gl_bai}"
@@ -3085,6 +3273,51 @@ show_main_menu() {
         echo -e "${gl_kjlan}[代理部署]${gl_bai}"
         echo "30. 一键部署SOCKS5代理"
         echo "31. Sub-Store多实例管理"
+    else
+        echo "1. 安装 XanMod 内核 + BBR v3"
+        echo ""
+        echo -e "${gl_kjlan}[BBR TCP调优]${gl_bai}"
+        echo "2. NS论坛CAKE调优"
+        echo "3. 科技lion高性能模式内核参数优化"
+        echo "4. BBR 直连/落地优化（智能带宽检测）"
+        echo ""
+        echo -e "${gl_kjlan}[系统设置]${gl_bai}"
+        echo "5. 虚拟内存管理"
+        echo "6. IPv6管理（临时/永久禁用/取消）"
+        echo "7. 设置临时SOCKS5代理"
+        echo "8. 设置IPv4/IPv6优先级"
+        echo "9. IPv4/IPv6连接检测"
+        echo ""
+        echo -e "${gl_kjlan}[Xray配置]${gl_bai}"
+        echo "10. Realm转发连接分析"
+        echo "11. 查看Xray配置"
+        echo "12. 设置Xray IPv6出站"
+        echo "13. 恢复Xray默认配置"
+        echo ""
+        echo -e "${gl_kjlan}[系统信息]${gl_bai}"
+        echo "14. 查看详细状态"
+        echo ""
+        echo -e "${gl_kjlan}[服务器检测合集]${gl_bai}"
+        echo "15. NS一键检测脚本"
+        echo "16. 服务器带宽测试"
+        echo "17. 三网回程路由测试"
+        echo "18. IP质量检测"
+        echo "19. IP质量检测-仅IPv4"
+        echo "20. 网络延迟质量检测"
+        echo "21. 国际互联速度测试"
+        echo "22. IP媒体/AI解锁检测"
+        echo ""
+        echo -e "${gl_kjlan}[脚本合集]${gl_bai}"
+        echo "23. PF_realm转发脚本"
+        echo "24. 御坂美琴一键双协议"
+        echo "25. F佬一键sing box脚本"
+        echo "26. 科技lion脚本"
+        echo "27. NS论坛的cake调优"
+        echo "28. 酷雪云脚本"
+        echo ""
+        echo -e "${gl_kjlan}[代理部署]${gl_bai}"
+        echo "29. 一键部署SOCKS5代理"
+        echo "30. Sub-Store多实例管理"
     fi
     
     echo ""
@@ -3155,171 +3388,164 @@ show_main_menu() {
             if [ $is_installed -eq 0 ]; then
                 set_temp_socks5_proxy
             else
-                set_ipv4_priority
+                manage_ip_priority
             fi
             ;;
         9)
             if [ $is_installed -eq 0 ]; then
-                set_ipv4_priority
-            else
-                set_ipv6_priority
-            fi
-            ;;
-        10)
-            if [ $is_installed -eq 0 ]; then
-                set_ipv6_priority
+                manage_ip_priority
             else
                 check_ipv4v6_connections
             fi
             ;;
-        11)
+        10)
             if [ $is_installed -eq 0 ]; then
                 check_ipv4v6_connections
             else
                 analyze_realm_connections
             fi
             ;;
-        12)
+        11)
             if [ $is_installed -eq 0 ]; then
                 analyze_realm_connections
             else
                 show_xray_config
             fi
             ;;
-        13)
+        12)
             if [ $is_installed -eq 0 ]; then
                 show_xray_config
             else
                 set_xray_ipv6_outbound
             fi
             ;;
-        14)
+        13)
             if [ $is_installed -eq 0 ]; then
                 set_xray_ipv6_outbound
             else
                 restore_xray_default
             fi
             ;;
-        15)
+        14)
             if [ $is_installed -eq 0 ]; then
                 restore_xray_default
             else
                 show_detailed_status
             fi
             ;;
-        16)
+        15)
             if [ $is_installed -eq 0 ]; then
                 show_detailed_status
             else
                 run_ns_detect
             fi
             ;;
-        17)
+        16)
             if [ $is_installed -eq 0 ]; then
                 run_ns_detect
             else
                 run_speedtest
             fi
             ;;
-        18)
+        17)
             if [ $is_installed -eq 0 ]; then
                 run_speedtest
             else
                 run_backtrace
             fi
             ;;
-        19)
+        18)
             if [ $is_installed -eq 0 ]; then
                 run_backtrace
             else
                 run_ip_quality_check
             fi
             ;;
-        20)
+        19)
             if [ $is_installed -eq 0 ]; then
                 run_ip_quality_check
             else
                 run_ip_quality_check_ipv4
             fi
             ;;
-        21)
+        20)
             if [ $is_installed -eq 0 ]; then
                 run_ip_quality_check_ipv4
             else
                 run_network_latency_check
             fi
             ;;
-        22)
+        21)
             if [ $is_installed -eq 0 ]; then
                 run_network_latency_check
             else
                 run_international_speed_test
             fi
             ;;
-        23)
+        22)
             if [ $is_installed -eq 0 ]; then
                 run_international_speed_test
             else
                 run_unlock_check
             fi
             ;;
-        24)
+        23)
             if [ $is_installed -eq 0 ]; then
                 run_unlock_check
             else
                 run_pf_realm
             fi
             ;;
-        25)
+        24)
             if [ $is_installed -eq 0 ]; then
                 run_pf_realm
             else
                 run_misaka_xray
             fi
             ;;
-        26)
+        25)
             if [ $is_installed -eq 0 ]; then
                 run_misaka_xray
             else
                 run_fscarmen_singbox
             fi
             ;;
-        27)
+        26)
             if [ $is_installed -eq 0 ]; then
                 run_fscarmen_singbox
             else
                 run_kejilion_script
             fi
             ;;
-        28)
+        27)
             if [ $is_installed -eq 0 ]; then
                 run_kejilion_script
             else
                 run_ns_cake
             fi
             ;;
-        29)
+        28)
             if [ $is_installed -eq 0 ]; then
                 run_ns_cake
             else
                 run_kxy_script
             fi
             ;;
-        30)
+        29)
             if [ $is_installed -eq 0 ]; then
                 run_kxy_script
             else
                 deploy_socks5
             fi
             ;;
-        31)
+        30)
             if [ $is_installed -eq 0 ]; then
                 deploy_socks5
             else
                 manage_substore
             fi
             ;;
-        32)
+        31)
             if [ $is_installed -eq 0 ]; then
                 manage_substore
             else
