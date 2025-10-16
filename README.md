@@ -492,7 +492,7 @@ systemctl restart sbox-socks5  # 重启服务
 - ✅ Docker/Docker Compose 依赖自动安装
 - ✅ 完整生命周期管理（安装/更新/卸载/查看）
 - ✅ 配置持久化（独立 YAML 文件）
-- ✅ **自动生成 Nginx 和 Cloudflare Tunnel 配置**
+- ✅ **自动生成 Cloudflare Tunnel 配置并引导式部署**
 
 **架构说明**：
 - 使用 `xream/sub-store:http-meta` 镜像（前后端分离架构）
@@ -519,14 +519,12 @@ HTTP-META 端口: 9876（回车使用默认）
 脚本自动完成：
   - 创建 Docker Compose 配置
   - 启动容器
-  - 生成 Nginx 配置模板
   - 生成 Cloudflare Tunnel 配置
 
 # 5. 交互式配置向导（NEW！）
-安装完成后，脚本会自动引导你配置反向代理：
-  - 选择1：Nginx 反向代理（自动化配置，支持 Let's Encrypt）
-  - 选择2：Cloudflare Tunnel（全自动部署，无需开端口）
-  - 选择3：跳过（稍后手动配置）
+安装完成后，脚本会自动引导你配置 Cloudflare Tunnel：
+  - 选择1：立即配置 Cloudflare Tunnel（推荐，全自动部署，无需开端口）
+  - 选择2：跳过（稍后手动配置）
 ```
 
 **访问地址格式**：
@@ -542,18 +540,7 @@ https://sub.你的域名.com?api=https://sub.你的域名.com/my-subs
 
 安装实例后，脚本会自动进入配置向导：
 
-**【选项1】Nginx 自动化配置**
-- ✅ 自动检测并安装 Nginx
-- ✅ 交互式输入域名
-- ✅ 支持 3 种 SSL 证书方式：
-  - Cloudflare 证书（手动上传）
-  - **Let's Encrypt 自动申请**（推荐）
-  - 仅 HTTP（不推荐）
-- ✅ 自动生成配置到 `/etc/nginx/conf.d/`
-- ✅ 自动测试配置并重载 Nginx
-- ✅ 完成后立即显示访问地址
-
-**【选项2】Cloudflare Tunnel 自动化部署**
+**【Cloudflare Tunnel 自动化部署】**
 - ✅ 自动下载并安装 `cloudflared`
 - ✅ 引导登录 Cloudflare 账户
 - ✅ 自动创建隧道和配置 DNS
@@ -566,25 +553,7 @@ https://sub.你的域名.com?api=https://sub.你的域名.com/my-subs
 
 ### 📝 方案2：手动配置（适合高级用户）
 
-**【方法1】Nginx 反向代理**
-```nginx
-server {
-    listen 443 ssl http2;
-    server_name sub.你的域名.com;
-    
-    # 前端页面（HTTP-META）
-    location / {
-        proxy_pass http://127.0.0.1:9876;
-    }
-    
-    # 后端 API
-    location /my-subs {
-        proxy_pass http://127.0.0.1:3001;
-    }
-}
-```
-
-**【方法2】Cloudflare Tunnel**（无需开端口）
+**【Cloudflare Tunnel 手动配置】**
 ```yaml
 ingress:
   - hostname: sub.你的域名.com
@@ -597,7 +566,6 @@ ingress:
 
 **自动生成的文件**：
 - Docker Compose 配置：`/root/sub-store-configs/store-{实例编号}.yaml`
-- Nginx 配置模板：`/root/sub-store-nginx-{实例编号}.conf`
 - CF Tunnel 配置：`/root/sub-store-cf-tunnel-{实例编号}.yaml`
 - 数据目录：`/root/data-sub-store-{实例编号}/`
 
@@ -629,9 +597,9 @@ docker ps | grep sub-store
 
 **⚠️ 重要提示**：
 - Sub-Store 服务监听 `127.0.0.1`，无法直接通过 IP 访问
-- 必须配置 Nginx 或 Cloudflare Tunnel 反向代理
+- 必须配置 Cloudflare Tunnel 反向代理才能使用
 - 访问路径支持自定义（建议使用随机路径提高安全性）
-- 前端（9876）和后端（3001）都需要代理
+- 前端和后端共用同一端口（由 `SUB_STORE_BACKEND_API_PORT` 指定）
 
 </details>
 
@@ -699,15 +667,6 @@ A: v2.5版本优化了菜单顺序，将常用的系统内核参数优化和CAKE
   - 菜单位置：选项 30（未安装）/ 32（已安装）
 
 - 🎯 **交互式配置向导（核心亮点）**
-  - 🚀 **Nginx 自动化配置**
-    - 自动检测并安装 Nginx
-    - 交互式输入域名
-    - 支持 Let's Encrypt 自动申请证书（推荐）
-    - 支持 Cloudflare 证书手动上传
-    - 支持仅 HTTP 模式
-    - 自动生成配置到 `/etc/nginx/conf.d/`
-    - 自动测试配置并重载 Nginx
-    - 完成后立即显示访问地址
   - 🌐 **Cloudflare Tunnel 自动化部署**
     - 自动下载并安装 `cloudflared`（支持 x86_64/aarch64）
     - 引导登录 Cloudflare 账户
@@ -720,12 +679,10 @@ A: v2.5版本优化了菜单顺序，将常用的系统内核参数优化和CAKE
     - 配置失败时提供详细错误信息和手动修复指南
 
 - 🔧 **反向代理配置自动生成**
-  - 自动生成 Nginx 反向代理配置模板
   - 自动生成 Cloudflare Tunnel 配置文件
-  - 前后端双端口代理配置（前端 9876 + 后端 3001）
-  - 配置文件保存在 `/root/sub-store-nginx-{实例编号}.conf`
-  - 支持 SSL/TLS 配置和 WebSocket
-  - HTTP → HTTPS 自动重定向
+  - 前后端共用单端口配置（由 SUB_STORE_BACKEND_API_PORT 指定）
+  - 配置文件保存在 `/root/sub-store-cf-tunnel-{实例编号}.yaml`
+  - 自动处理 SSL/TLS（由 Cloudflare 提供）
 
 - 🎯 **核心特性**
   - 前后端分离架构（`xream/sub-store:http-meta` 镜像）
@@ -744,7 +701,7 @@ A: v2.5版本优化了菜单顺序，将常用的系统内核参数优化和CAKE
   - README 新增详细的 Sub-Store 功能说明
   - 包含完整的安装流程、配置示例和常用命令
   - **交互式配置向导完整说明**
-  - Nginx 和 Cloudflare Tunnel 自动化配置指南
+  - Cloudflare Tunnel 自动化配置指南
   - 多实例场景说明
 
 ### v2.7.0 (2025-10-14) - Realm Analysis & Connection Detection
