@@ -3,7 +3,7 @@
 🚀 **XanMod 内核 + BBR v3 + 全方位 VPS 管理工具集**  
 一键安装 XanMod 内核，启用 BBR v3 拥塞控制，集成 31+ 实用工具，全面优化你的 VPS 服务器。
 
-> **版本**: 2.7.0 (Realm Analysis & Connection Detection)  
+> **版本**: 2.8.0 (Sub-Store Multi-Instance Management)  
 > **快速上手**: [📖 快速使用指南](QUICK_START.md) | **视频教程**: [🎬 B站教程](https://www.bilibili.com/video/BV14K421x7BS)
 
 ---
@@ -133,7 +133,7 @@ bash <(wget -qO- https://raw.githubusercontent.com/Eric86777/vps-tcp-tune/main/n
 
 ## 🌟 核心特性
 
-### ✨ 九大功能模块
+### ✨ 十大功能模块
 
 1. **🔧 内核管理** - XanMod 内核安装/更新/卸载（支持 x86_64 & ARM64）
 2. **⚡ BBR TCP调优** - CAKE队列优化 + 6种内核参数模式 + BBR直连优化（智能带宽检测）
@@ -142,7 +142,7 @@ bash <(wget -qO- https://raw.githubusercontent.com/Eric86777/vps-tcp-tune/main/n
 5. **📊 网络测试** - Speedtest + 三网回程 + IP质量 + 延迟检测
 6. **🎯 流媒体检测** - Netflix/Disney+/OpenAI/Claude 解锁检测
 7. **🔌 第三方工具** - PF_realm + 御坂美琴 + sing-box + 科技lion + NS论坛 + 酷雪云
-8. **🚀 代理部署** - 一键部署 SOCKS5 代理（基于 Sing-box）
+8. **🚀 代理部署** - 一键部署 SOCKS5 代理（基于 Sing-box） + **Sub-Store 多实例管理（NEW）**
 9. **📋 系统信息** - CPU/内存/网络流量/地理位置统计
 
 ---
@@ -183,6 +183,7 @@ bash <(wget -qO- https://raw.githubusercontent.com/Eric86777/vps-tcp-tune/main/n
 | NS论坛cake调优 | 26 | 27 |
 | 酷雪云脚本 | 27 | 28 |
 | 部署SOCKS5代理 | 28 | 29 |
+| **Sub-Store多实例管理** | **30** | **32** |
 
 </details>
 
@@ -471,6 +472,129 @@ systemctl restart sbox-socks5  # 重启服务
 
 </details>
 
+<details>
+<summary>📦 Sub-Store 多实例管理</summary>
+
+菜单选项 **30**（未安装）/ **32**（已安装）
+
+基于 Docker Compose 的 Sub-Store 订阅转换服务多实例管理系统。
+
+**核心特性**：
+- ✅ 多实例独立管理（支持部署多个独立的 Sub-Store 服务）
+- ✅ **自定义访问路径**（支持随机生成或自定义，如 `/my-subs`）
+- ✅ 端口冲突自动检测
+- ✅ Docker/Docker Compose 依赖自动安装
+- ✅ 完整生命周期管理（安装/更新/卸载/查看）
+- ✅ 配置持久化（独立 YAML 文件）
+- ✅ **自动生成 Nginx 和 Cloudflare Tunnel 配置**
+
+**架构说明**：
+- 使用 `xream/sub-store:http-meta` 镜像（前后端分离架构）
+- 前端端口：9876（监听 127.0.0.1）
+- 后端端口：3001（监听 127.0.0.1）
+- **必须通过反向代理才能访问**（无法直接通过 IP 访问）
+
+**安装流程**：
+```bash
+# 1. 运行脚本并选择 Sub-Store 管理
+选择 30（未安装）或 32（已安装）
+
+# 2. 选择安装新实例
+输入 1 → 安装新实例
+
+# 3. 配置参数
+实例编号: 1
+后端 API 端口: 3001（回车使用默认）
+HTTP-META 端口: 9876（回车使用默认）
+访问路径: my-subs（或回车使用随机20位字符）
+数据目录: /root/data-sub-store-1（回车使用默认）
+
+# 4. 确认安装
+脚本自动完成：
+  - 创建 Docker Compose 配置
+  - 启动容器
+  - 生成 Nginx 配置模板
+  - 生成 Cloudflare Tunnel 配置
+```
+
+**访问地址格式**：
+```
+https://sub.你的域名.com?api=https://sub.你的域名.com/my-subs
+         ↑                                       ↑
+      前端页面                                后端API路径
+```
+
+**反向代理配置（二选一）**：
+
+**【方法1】Nginx 反向代理**
+```nginx
+server {
+    listen 443 ssl http2;
+    server_name sub.你的域名.com;
+    
+    # 前端页面（HTTP-META）
+    location / {
+        proxy_pass http://127.0.0.1:9876;
+    }
+    
+    # 后端 API
+    location /my-subs {
+        proxy_pass http://127.0.0.1:3001;
+    }
+}
+```
+
+**【方法2】Cloudflare Tunnel**（无需开端口）
+```yaml
+ingress:
+  - hostname: sub.你的域名.com
+    path: /my-subs
+    service: http://127.0.0.1:3001
+  - hostname: sub.你的域名.com
+    service: http://127.0.0.1:9876
+  - service: http_status:404
+```
+
+**自动生成的文件**：
+- Docker Compose 配置：`/root/sub-store-configs/store-{实例编号}.yaml`
+- Nginx 配置模板：`/root/sub-store-nginx-{实例编号}.conf`
+- CF Tunnel 配置：`/root/sub-store-cf-tunnel-{实例编号}.yaml`
+- 数据目录：`/root/data-sub-store-{实例编号}/`
+
+**常用命令**：
+```bash
+# 查看日志
+docker logs sub-store-1
+
+# 重启服务
+docker compose -f /root/sub-store-configs/store-1.yaml restart
+
+# 停止服务
+docker compose -f /root/sub-store-configs/store-1.yaml down
+
+# 查看容器状态
+docker ps | grep sub-store
+```
+
+**多实例场景**：
+- 🔹 为不同用户部署独立实例
+- 🔹 测试环境与生产环境分离
+- 🔹 不同订阅源使用不同实例
+- 🔹 负载分散到多个实例
+
+**前置要求**：
+- 已安装 Docker 和 Docker Compose（脚本可自动安装）
+- 准备好域名（用于反向代理）
+- 服务器可访问 Docker Hub
+
+**⚠️ 重要提示**：
+- Sub-Store 服务监听 `127.0.0.1`，无法直接通过 IP 访问
+- 必须配置 Nginx 或 Cloudflare Tunnel 反向代理
+- 访问路径支持自定义（建议使用随机路径提高安全性）
+- 前端（9876）和后端（3001）都需要代理
+
+</details>
+
 ---
 
 ## ⚠️ 注意事项
@@ -523,6 +647,42 @@ A: v2.5版本优化了菜单顺序，将常用的系统内核参数优化和CAKE
 
 <details>
 <summary>查看完整更新日志（点击展开）</summary>
+
+### v2.8.0 (2025-01-16) - Sub-Store Multi-Instance Management
+
+- 📦 **新增 Sub-Store 多实例管理功能**
+  - 基于 Docker Compose 的完整生命周期管理
+  - 支持安装、更新、卸载、查看多个独立实例
+  - **自定义访问路径**（支持随机生成或自定义，如 `/my-subs`）
+  - 智能端口冲突检测（后端 3001 + 前端 9876）
+  - Docker/Docker Compose 依赖自动安装（国内/国外镜像可选）
+  - 菜单位置：选项 30（未安装）/ 32（已安装）
+
+- 🔧 **反向代理配置自动生成**
+  - 自动生成 Nginx 反向代理配置模板
+  - 自动生成 Cloudflare Tunnel 配置文件
+  - 前后端双端口代理配置（前端 9876 + 后端 3001）
+  - 配置文件保存在 `/root/sub-store-nginx-{实例编号}.conf`
+  - 支持 SSL/TLS 配置和 WebSocket
+
+- 🎯 **核心特性**
+  - 前后端分离架构（`xream/sub-store:http-meta` 镜像）
+  - 监听本地 127.0.0.1（安全隔离，必须通过反向代理访问）
+  - 配置持久化（独立 YAML 文件管理）
+  - 数据目录独立（支持自定义或使用默认路径）
+  - 完整的实例状态显示（运行中/已停止）
+
+- 📋 **使用场景**
+  - 为不同用户部署独立 Sub-Store 实例
+  - 测试环境与生产环境分离
+  - 不同订阅源使用不同实例
+  - 负载分散到多个实例
+
+- 📚 **文档完善**
+  - README 新增详细的 Sub-Store 功能说明
+  - 包含完整的安装流程、配置示例和常用命令
+  - Nginx 和 Cloudflare Tunnel 配置指南
+  - 多实例场景说明
 
 ### v2.7.0 (2025-10-14) - Realm Analysis & Connection Detection
 

@@ -3038,6 +3038,7 @@ show_main_menu() {
         echo ""
         echo -e "${gl_kjlan}[代理部署]${gl_bai}"
         echo "31. 一键部署SOCKS5代理"
+        echo "32. Sub-Store多实例管理"
     else
         echo "1. 安装 XanMod 内核 + BBR v3"
         echo ""
@@ -3083,6 +3084,7 @@ show_main_menu() {
         echo ""
         echo -e "${gl_kjlan}[代理部署]${gl_bai}"
         echo "30. 一键部署SOCKS5代理"
+        echo "31. Sub-Store多实例管理"
     fi
     
     echo ""
@@ -3313,6 +3315,13 @@ show_main_menu() {
         31)
             if [ $is_installed -eq 0 ]; then
                 deploy_socks5
+            else
+                manage_substore
+            fi
+            ;;
+        32)
+            if [ $is_installed -eq 0 ]; then
+                manage_substore
             else
                 echo "无效选择"
                 sleep 2
@@ -3960,6 +3969,791 @@ SERVICEEOF
     fi
     
     break_end
+}
+
+#=============================================================================
+# Sub-Store 多实例管理功能
+#=============================================================================
+
+# 检查端口是否被占用
+check_substore_port() {
+    local port=$1
+    if netstat -tuln 2>/dev/null | grep -q ":$port "; then
+        return 1
+    elif ss -tuln 2>/dev/null | grep -q ":$port "; then
+        return 1
+    fi
+    return 0
+}
+
+# 验证端口号
+validate_substore_port() {
+    local port=$1
+    if ! [[ "$port" =~ ^[0-9]+$ ]] || [ "$port" -lt 1 ] || [ "$port" -gt 65535 ]; then
+        return 1
+    fi
+    return 0
+}
+
+# 验证访问路径
+validate_substore_path() {
+    local path=$1
+    # 只包含字母数字和少数符号
+    if [[ ! "$path" =~ ^[a-zA-Z0-9/_-]+$ ]]; then
+        return 1
+    fi
+    return 0
+}
+
+# 生成随机路径
+generate_substore_random_path() {
+    cat /dev/urandom | tr -dc 'a-zA-Z0-9' | fold -w 20 | head -n 1
+}
+
+# 检查 Docker 是否安装
+check_substore_docker() {
+    if ! command -v docker &> /dev/null; then
+        echo -e "${gl_hong}Docker 未安装${gl_bai}"
+        echo ""
+        read -e -p "$(echo -e "${gl_huang}是否现在安装 Docker？(Y/N): ${gl_bai}")" install_docker
+        
+        case "$install_docker" in
+            [Yy])
+                echo ""
+                echo "请选择安装源："
+                echo "1. 国内镜像（阿里云）"
+                echo "2. 国外官方源"
+                read -e -p "请选择 [1]: " mirror_choice
+                mirror_choice=${mirror_choice:-1}
+                
+                case "$mirror_choice" in
+                    1)
+                        echo "正在使用阿里云镜像安装 Docker..."
+                        curl -fsSL https://get.docker.com | bash -s docker --mirror Aliyun
+                        ;;
+                    2)
+                        echo "正在使用官方源安装 Docker..."
+                        curl -fsSL https://get.docker.com | bash
+                        ;;
+                    *)
+                        echo "无效选择，使用阿里云镜像..."
+                        curl -fsSL https://get.docker.com | bash -s docker --mirror Aliyun
+                        ;;
+                esac
+                
+                if [ $? -eq 0 ]; then
+                    echo -e "${gl_lv}✅ Docker 安装成功${gl_bai}"
+                    systemctl enable docker
+                    systemctl start docker
+                else
+                    echo -e "${gl_hong}❌ Docker 安装失败${gl_bai}"
+                    return 1
+                fi
+                ;;
+            *)
+                echo "已取消，请先安装 Docker"
+                return 1
+                ;;
+        esac
+    fi
+    
+    if ! command -v docker compose &> /dev/null && ! command -v docker-compose &> /dev/null; then
+        echo -e "${gl_huang}Docker Compose 未安装，尝试安装...${gl_bai}"
+        # Docker Compose v2 通常随 Docker 一起安装
+        if docker compose version &>/dev/null; then
+            echo -e "${gl_lv}✅ Docker Compose 已可用${gl_bai}"
+        else
+            echo -e "${gl_hong}❌ Docker Compose 不可用，请手动安装${gl_bai}"
+            return 1
+        fi
+    fi
+    
+    return 0
+}
+
+# 获取已部署的实例列表
+get_substore_instances() {
+    local instances=()
+    if [ -d "/root/sub-store-configs" ]; then
+        for config in /root/sub-store-configs/store-*.yaml; do
+            if [ -f "$config" ]; then
+                local instance_name=$(basename "$config" .yaml)
+                instances+=("$instance_name")
+            fi
+        done
+    fi
+    echo "${instances[@]}"
+}
+
+# 检查实例是否存在
+check_substore_instance_exists() {
+    local instance_num=$1
+    if [ -f "/root/sub-store-configs/store-$instance_num.yaml" ]; then
+        return 0
+    fi
+    return 1
+}
+
+# 安装新实例
+install_substore_instance() {
+    clear
+    echo "=================================="
+    echo "    Sub-Store 实例安装向导"
+    echo "=================================="
+    echo ""
+    
+    # 检查 Docker
+    if ! check_substore_docker; then
+        break_end
+        return 1
+    fi
+    
+    echo -e "${gl_lv}✅ Docker 环境检查通过${gl_bai}"
+    echo ""
+    
+    # 获取建议的实例编号
+    local instances=($(get_substore_instances))
+    local suggested_num=1
+    if [ ${#instances[@]} -gt 0 ]; then
+        echo -e "${gl_huang}已存在 ${#instances[@]} 个实例${gl_bai}"
+        suggested_num=$((${#instances[@]} + 1))
+    fi
+    
+    # 输入实例编号
+    local instance_num
+    while true; do
+        read -e -p "请输入实例编号（建议: $suggested_num）: " instance_num
+        
+        if [ -z "$instance_num" ]; then
+            echo -e "${gl_hong}实例编号不能为空${gl_bai}"
+            continue
+        fi
+        
+        if ! [[ "$instance_num" =~ ^[0-9]+$ ]]; then
+            echo -e "${gl_hong}实例编号必须是数字${gl_bai}"
+            continue
+        fi
+        
+        if check_substore_instance_exists "$instance_num"; then
+            echo -e "${gl_hong}实例编号 $instance_num 已存在${gl_bai}"
+            continue
+        fi
+        
+        break
+    done
+    
+    echo -e "${gl_lv}✅ 实例编号: $instance_num${gl_bai}"
+    echo ""
+    
+    # 输入后端 API 端口
+    local api_port
+    local default_api_port=3001
+    while true; do
+        read -e -p "请输入后端 API 端口（回车使用默认 $default_api_port）: " api_port
+        
+        if [ -z "$api_port" ]; then
+            api_port=$default_api_port
+            echo -e "${gl_huang}使用默认端口: $api_port${gl_bai}"
+        fi
+        
+        if ! validate_substore_port "$api_port"; then
+            echo -e "${gl_hong}端口号无效${gl_bai}"
+            continue
+        fi
+        
+        if ! check_substore_port "$api_port"; then
+            echo -e "${gl_hong}端口 $api_port 已被占用${gl_bai}"
+            continue
+        fi
+        
+        break
+    done
+    
+    echo -e "${gl_lv}✅ 后端 API 端口: $api_port${gl_bai}"
+    echo ""
+    
+    # 输入 HTTP-META 端口
+    local http_port
+    local default_http_port=9876
+    while true; do
+        read -e -p "请输入 HTTP-META 端口（回车使用默认 $default_http_port）: " http_port
+        
+        if [ -z "$http_port" ]; then
+            http_port=$default_http_port
+            echo -e "${gl_huang}使用默认端口: $http_port${gl_bai}"
+        fi
+        
+        if ! validate_substore_port "$http_port"; then
+            echo -e "${gl_hong}端口号无效${gl_bai}"
+            continue
+        fi
+        
+        if ! check_substore_port "$http_port"; then
+            echo -e "${gl_hong}端口 $http_port 已被占用${gl_bai}"
+            continue
+        fi
+        
+        if [ "$http_port" == "$api_port" ]; then
+            echo -e "${gl_hong}HTTP-META 端口不能与后端 API 端口相同${gl_bai}"
+            continue
+        fi
+        
+        break
+    done
+    
+    echo -e "${gl_lv}✅ HTTP-META 端口: $http_port${gl_bai}"
+    echo ""
+    
+    # 输入访问路径
+    local access_path
+    while true; do
+        local random_path=$(generate_substore_random_path)
+        echo -e "${gl_zi}访问路径说明：${gl_bai}"
+        echo "  - 路径会自动添加开头的 /"
+        echo "  - 建议使用随机路径（更安全）"
+        echo "  - 也可使用自定义路径（易记）"
+        echo ""
+        echo -e "${gl_huang}随机生成的路径: ${random_path}${gl_bai}"
+        echo ""
+        
+        read -e -p "请输入访问路径（直接输入如 my-subs，或回车使用随机）: " access_path
+        
+        if [ -z "$access_path" ]; then
+            access_path="$random_path"
+            echo -e "${gl_lv}✅ 使用随机路径: /$access_path${gl_bai}"
+        else
+            # 移除可能的开头斜杠
+            access_path="${access_path#/}"
+            
+            if ! validate_substore_path "$access_path"; then
+                echo -e "${gl_hong}路径格式无效（只能包含字母、数字、-、_、/）${gl_bai}"
+                continue
+            fi
+            
+            echo -e "${gl_lv}✅ 使用自定义路径: /$access_path${gl_bai}"
+        fi
+        
+        break
+    done
+    
+    echo ""
+    
+    # 输入数据存储目录
+    local data_dir
+    local default_data_dir="/root/data-sub-store-$instance_num"
+    
+    read -e -p "请输入数据存储目录（回车使用默认 $default_data_dir）: " data_dir
+    
+    if [ -z "$data_dir" ]; then
+        data_dir="$default_data_dir"
+        echo -e "${gl_huang}使用默认目录: $data_dir${gl_bai}"
+    fi
+    
+    if [ -d "$data_dir" ]; then
+        echo ""
+        echo -e "${gl_huang}目录 $data_dir 已存在${gl_bai}"
+        local use_existing
+        read -e -p "是否使用现有目录？(y/n): " use_existing
+        if [[ ! "$use_existing" =~ ^[Yy]$ ]]; then
+            echo "请重新运行并选择其他目录"
+            break_end
+            return 1
+        fi
+    fi
+    
+    # 确认信息
+    echo ""
+    echo "=================================="
+    echo "          配置确认"
+    echo "=================================="
+    echo "实例编号: $instance_num"
+    echo "容器名称: sub-store-$instance_num"
+    echo "后端 API 端口: $api_port"
+    echo "HTTP-META 端口: $http_port"
+    echo "访问路径: /$access_path"
+    echo "数据目录: $data_dir"
+    echo "=================================="
+    echo ""
+    
+    local confirm
+    read -e -p "确认开始安装？(y/n): " confirm
+    if [[ ! "$confirm" =~ ^[Yy]$ ]]; then
+        echo "已取消安装"
+        break_end
+        return 1
+    fi
+    
+    # 创建配置目录
+    mkdir -p /root/sub-store-configs
+    
+    # 创建数据目录
+    echo ""
+    echo "正在创建数据目录..."
+    mkdir -p "$data_dir"
+    
+    # 生成配置文件
+    local config_file="/root/sub-store-configs/store-$instance_num.yaml"
+    echo "正在生成配置文件..."
+    
+    cat > "$config_file" << EOF
+services:
+  sub-store-$instance_num:
+    image: xream/sub-store:http-meta
+    container_name: sub-store-$instance_num
+    restart: always
+    network_mode: host
+    environment:
+      SUB_STORE_BACKEND_API_HOST: 127.0.0.1
+      SUB_STORE_BACKEND_API_PORT: $api_port
+      SUB_STORE_BACKEND_MERGE: true
+      SUB_STORE_FRONTEND_BACKEND_PATH: /$access_path
+      PORT: $http_port
+      HOST: 127.0.0.1
+    volumes:
+      - $data_dir:/opt/app/data
+EOF
+    
+    # 启动容器
+    echo "正在启动 Sub-Store 实例..."
+    if docker compose -f "$config_file" up -d; then
+        echo ""
+        echo -e "${gl_lv}=========================================="
+        echo "  Sub-Store 实例安装成功！"
+        echo "==========================================${gl_bai}"
+        echo ""
+        echo -e "${gl_zi}实例信息：${gl_bai}"
+        echo "  - 实例编号: $instance_num"
+        echo "  - 容器名称: sub-store-$instance_num"
+        echo "  - 前端端口: $http_port（监听 127.0.0.1）"
+        echo "  - 后端端口: $api_port（监听 127.0.0.1）"
+        echo "  - 访问路径: /$access_path"
+        echo "  - 数据目录: $data_dir"
+        echo "  - 配置文件: $config_file"
+        echo ""
+        echo -e "${gl_huang}⚠️  重要提示：${gl_bai}"
+        echo "  此实例仅监听本地 127.0.0.1，无法直接通过IP访问！"
+        echo "  必须配置反向代理后才能使用。"
+        echo ""
+        
+        # 生成 Nginx 配置
+        local nginx_conf="/root/sub-store-nginx-$instance_num.conf"
+        cat > "$nginx_conf" << 'NGINXEOF'
+# Sub-Store Nginx 反向代理配置
+# 使用说明：
+#   1. 修改 server_name 为你的域名
+#   2. 配置 SSL 证书路径
+#   3. 复制到 /etc/nginx/conf.d/ 或 /etc/nginx/sites-enabled/
+#   4. 执行: nginx -t && systemctl reload nginx
+
+server {
+    listen 443 ssl http2;
+    server_name sub.你的域名.com;  # 修改为你的域名
+    
+    # SSL 证书配置（Cloudflare 或 Let's Encrypt）
+    ssl_certificate /path/to/cert.pem;      # 修改证书路径
+    ssl_certificate_key /path/to/key.pem;   # 修改密钥路径
+    
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_ciphers HIGH:!aNULL:!MD5;
+    ssl_prefer_server_ciphers on;
+    
+    # 前端页面（HTTP-META）
+    location / {
+        proxy_pass http://127.0.0.1:HTTP_PORT_PLACEHOLDER;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        
+        # WebSocket 支持
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+    }
+    
+    # 后端 API
+    location /ACCESS_PATH_PLACEHOLDER {
+        proxy_pass http://127.0.0.1:API_PORT_PLACEHOLDER;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
+
+# HTTP 重定向到 HTTPS（可选）
+server {
+    listen 80;
+    server_name sub.你的域名.com;  # 修改为你的域名
+    return 301 https://$server_name$request_uri;
+}
+NGINXEOF
+        
+        # 替换占位符
+        sed -i "s/HTTP_PORT_PLACEHOLDER/$http_port/g" "$nginx_conf"
+        sed -i "s/API_PORT_PLACEHOLDER/$api_port/g" "$nginx_conf"
+        sed -i "s|ACCESS_PATH_PLACEHOLDER|$access_path|g" "$nginx_conf"
+        
+        echo -e "${gl_kjlan}【方法1】Nginx 反向代理（推荐）${gl_bai}"
+        echo ""
+        echo "  配置文件已生成: $nginx_conf"
+        echo ""
+        echo "  使用步骤："
+        echo "    1. 修改配置中的域名"
+        echo "    2. 配置 SSL 证书路径"
+        echo "    3. 复制到 Nginx: cp $nginx_conf /etc/nginx/conf.d/"
+        echo "    4. 测试并重载: nginx -t && systemctl reload nginx"
+        echo ""
+        echo "  配置完成后访问："
+        echo -e "    ${gl_lv}https://sub.你的域名.com?api=https://sub.你的域名.com/$access_path${gl_bai}"
+        echo ""
+        
+        # 生成 Cloudflare Tunnel 配置
+        local cf_tunnel_conf="/root/sub-store-cf-tunnel-$instance_num.yaml"
+        cat > "$cf_tunnel_conf" << CFEOF
+# Cloudflare Tunnel 配置
+# 使用说明：
+#   1. 安装 cloudflared: 
+#      wget https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64
+#      chmod +x cloudflared-linux-amd64 && mv cloudflared-linux-amd64 /usr/local/bin/cloudflared
+#   2. 登录: cloudflared tunnel login
+#   3. 创建隧道: cloudflared tunnel create sub-store-$instance_num
+#   4. 修改下面的 tunnel 和 credentials-file
+#   5. 配置路由: cloudflared tunnel route dns <TUNNEL_ID> sub.你的域名.com
+#   6. 启动: cloudflared tunnel --config $cf_tunnel_conf run
+
+tunnel: <TUNNEL_ID>  # 替换为你的 Tunnel ID
+credentials-file: /root/.cloudflared/<TUNNEL_ID>.json  # 替换为你的凭证文件路径
+
+ingress:
+  # 后端 API 路由（必须在前面，更具体的规则）
+  - hostname: sub.你的域名.com
+    path: /$access_path
+    service: http://127.0.0.1:$api_port
+  
+  # 前端页面路由（通配所有其他请求）
+  - hostname: sub.你的域名.com
+    service: http://127.0.0.1:$http_port
+  
+  # 默认规则（必须）
+  - service: http_status:404
+CFEOF
+        
+        echo -e "${gl_kjlan}【方法2】Cloudflare Tunnel（无需开端口）${gl_bai}"
+        echo ""
+        echo "  配置文件已生成: $cf_tunnel_conf"
+        echo ""
+        echo "  使用步骤："
+        echo "    1. 安装 cloudflared 工具"
+        echo "    2. 登录并创建隧道"
+        echo "    3. 修改配置中的 tunnel ID 和凭证路径"
+        echo "    4. 配置 DNS 路由"
+        echo "    5. 启动: cloudflared tunnel --config $cf_tunnel_conf run"
+        echo ""
+        echo "  配置完成后访问："
+        echo -e "    ${gl_lv}https://sub.你的域名.com?api=https://sub.你的域名.com/$access_path${gl_bai}"
+        echo ""
+        
+        echo -e "${gl_zi}常用命令：${gl_bai}"
+        echo "  - 查看日志: docker logs sub-store-$instance_num"
+        echo "  - 停止服务: docker compose -f $config_file down"
+        echo "  - 重启服务: docker compose -f $config_file restart"
+        echo ""
+    else
+        echo -e "${gl_hong}启动失败，请检查配置和日志${gl_bai}"
+        break_end
+        return 1
+    fi
+    
+    break_end
+}
+
+# 更新实例
+update_substore_instance() {
+    clear
+    echo "=================================="
+    echo "    Sub-Store 实例更新"
+    echo "=================================="
+    echo ""
+    
+    local instances=($(get_substore_instances))
+    
+    if [ ${#instances[@]} -eq 0 ]; then
+        echo -e "${gl_huang}没有已部署的实例${gl_bai}"
+        break_end
+        return 1
+    fi
+    
+    echo -e "${gl_zi}已部署的实例：${gl_bai}"
+    for i in "${!instances[@]}"; do
+        local instance_name="${instances[$i]}"
+        local instance_num=$(echo "$instance_name" | sed 's/store-//')
+        local container_name="sub-store-$instance_num"
+        
+        if docker ps --format '{{.Names}}' | grep -q "^${container_name}$"; then
+            echo -e "  $((i+1)). ${instance_name} ${gl_lv}[运行中]${gl_bai}"
+        else
+            echo -e "  $((i+1)). ${instance_name} ${gl_hong}[已停止]${gl_bai}"
+        fi
+    done
+    echo "  $((${#instances[@]}+1)). 更新所有实例"
+    echo ""
+    
+    local choice
+    read -e -p "请选择要更新的实例编号（输入 0 取消）: " choice
+    
+    if [ "$choice" == "0" ]; then
+        echo "已取消更新"
+        break_end
+        return 1
+    fi
+    
+    # 更新所有实例
+    if [ "$choice" == "$((${#instances[@]}+1))" ]; then
+        echo ""
+        echo "准备更新所有实例..."
+        local confirm
+        read -e -p "确认更新所有 ${#instances[@]} 个实例？(y/n): " confirm
+        if [[ ! "$confirm" =~ ^[Yy]$ ]]; then
+            echo "已取消更新"
+            break_end
+            return 1
+        fi
+        
+        echo "正在拉取最新镜像..."
+        docker pull xream/sub-store:http-meta
+        
+        for instance in "${instances[@]}"; do
+            local config_file="/root/sub-store-configs/${instance}.yaml"
+            local instance_num=$(echo "$instance" | sed 's/store-//')
+            
+            echo ""
+            echo "正在更新实例: $instance"
+            docker compose -f "$config_file" down
+            docker compose -f "$config_file" up -d
+            echo -e "${gl_lv}✅ 实例 $instance 更新完成${gl_bai}"
+        done
+        
+        echo ""
+        echo -e "${gl_lv}所有实例更新完成！${gl_bai}"
+        break_end
+        return 0
+    fi
+    
+    # 更新单个实例
+    if ! [[ "$choice" =~ ^[0-9]+$ ]] || [ "$choice" -lt 1 ] || [ "$choice" -gt ${#instances[@]} ]; then
+        echo -e "${gl_hong}无效的选择${gl_bai}"
+        break_end
+        return 1
+    fi
+    
+    local instance_name="${instances[$((choice-1))]}"
+    local config_file="/root/sub-store-configs/${instance_name}.yaml"
+    local instance_num=$(echo "$instance_name" | sed 's/store-//')
+    
+    echo ""
+    echo "准备更新实例: $instance_name"
+    local confirm
+    read -e -p "确认更新？(y/n): " confirm
+    if [[ ! "$confirm" =~ ^[Yy]$ ]]; then
+        echo "已取消更新"
+        break_end
+        return 1
+    fi
+    
+    echo "正在拉取最新镜像..."
+    docker pull xream/sub-store:http-meta
+    
+    echo "正在停止容器..."
+    docker compose -f "$config_file" down
+    
+    echo "正在启动更新后的容器..."
+    docker compose -f "$config_file" up -d
+    
+    echo -e "${gl_lv}✅ 实例 $instance_name 更新完成！${gl_bai}"
+    
+    break_end
+}
+
+# 卸载实例
+uninstall_substore_instance() {
+    clear
+    echo "=================================="
+    echo "    Sub-Store 实例卸载"
+    echo "=================================="
+    echo ""
+    
+    local instances=($(get_substore_instances))
+    
+    if [ ${#instances[@]} -eq 0 ]; then
+        echo -e "${gl_huang}没有已部署的实例${gl_bai}"
+        break_end
+        return 1
+    fi
+    
+    echo -e "${gl_zi}已部署的实例：${gl_bai}"
+    for i in "${!instances[@]}"; do
+        local instance_name="${instances[$i]}"
+        local instance_num=$(echo "$instance_name" | sed 's/store-//')
+        local container_name="sub-store-$instance_num"
+        
+        if docker ps --format '{{.Names}}' | grep -q "^${container_name}$"; then
+            echo -e "  $((i+1)). ${instance_name} ${gl_lv}[运行中]${gl_bai}"
+        else
+            echo -e "  $((i+1)). ${instance_name} ${gl_hong}[已停止]${gl_bai}"
+        fi
+    done
+    echo ""
+    
+    local choice
+    read -e -p "请选择要卸载的实例编号（输入 0 取消）: " choice
+    
+    if [ "$choice" == "0" ]; then
+        echo "已取消卸载"
+        break_end
+        return 1
+    fi
+    
+    if ! [[ "$choice" =~ ^[0-9]+$ ]] || [ "$choice" -lt 1 ] || [ "$choice" -gt ${#instances[@]} ]; then
+        echo -e "${gl_hong}无效的选择${gl_bai}"
+        break_end
+        return 1
+    fi
+    
+    local instance_name="${instances[$((choice-1))]}"
+    local config_file="/root/sub-store-configs/${instance_name}.yaml"
+    local instance_num=$(echo "$instance_name" | sed 's/store-//')
+    
+    echo ""
+    echo -e "${gl_huang}将要卸载实例: $instance_name${gl_bai}"
+    
+    local delete_data
+    read -e -p "是否同时删除数据目录？(y/n): " delete_data
+    echo ""
+    
+    local confirm
+    read -e -p "确认卸载？(y/n): " confirm
+    if [[ ! "$confirm" =~ ^[Yy]$ ]]; then
+        echo "已取消卸载"
+        break_end
+        return 1
+    fi
+    
+    echo "正在停止并删除容器..."
+    docker compose -f "$config_file" down
+    
+    if [[ "$delete_data" =~ ^[Yy]$ ]]; then
+        # 从配置文件中提取数据目录
+        local data_dir=$(grep -A 1 "volumes:" "$config_file" | tail -n 1 | awk -F':' '{print $1}' | xargs)
+        if [ -n "$data_dir" ] && [ -d "$data_dir" ]; then
+            echo "正在删除数据目录: $data_dir"
+            rm -rf "$data_dir"
+        fi
+    fi
+    
+    echo "正在删除配置文件..."
+    rm -f "$config_file"
+    
+    # 删除相关配置模板
+    rm -f "/root/sub-store-nginx-$instance_num.conf"
+    rm -f "/root/sub-store-cf-tunnel-$instance_num.yaml"
+    
+    echo -e "${gl_lv}✅ 实例 $instance_name 已成功卸载${gl_bai}"
+    
+    break_end
+}
+
+# 列出所有实例
+list_substore_instances() {
+    clear
+    echo "=================================="
+    echo "    已部署的 Sub-Store 实例"
+    echo "=================================="
+    echo ""
+    
+    local instances=($(get_substore_instances))
+    
+    if [ ${#instances[@]} -eq 0 ]; then
+        echo -e "${gl_huang}没有已部署的实例${gl_bai}"
+        break_end
+        return 1
+    fi
+    
+    for instance in "${instances[@]}"; do
+        local config_file="/root/sub-store-configs/${instance}.yaml"
+        local instance_num=$(echo "$instance" | sed 's/store-//')
+        local container_name="sub-store-$instance_num"
+        
+        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+        echo "实例编号: $instance_num"
+        
+        # 检查容器状态
+        if docker ps --format '{{.Names}}' | grep -q "^${container_name}$"; then
+            echo -e "  状态: ${gl_lv}运行中${gl_bai}"
+        else
+            echo -e "  状态: ${gl_hong}已停止${gl_bai}"
+        fi
+        
+        # 提取配置信息
+        if [ -f "$config_file" ]; then
+            local http_port=$(grep "PORT:" "$config_file" | awk '{print $2}')
+            local api_port=$(grep "SUB_STORE_BACKEND_API_PORT:" "$config_file" | awk '{print $2}')
+            local access_path=$(grep "SUB_STORE_FRONTEND_BACKEND_PATH:" "$config_file" | awk '{print $2}')
+            local data_dir=$(grep -A 1 "volumes:" "$config_file" | tail -n 1 | awk -F':' '{print $1}' | xargs)
+            
+            echo "  容器名称: $container_name"
+            echo "  前端端口: $http_port (127.0.0.1)"
+            echo "  后端端口: $api_port (127.0.0.1)"
+            echo "  访问路径: $access_path"
+            echo "  数据目录: $data_dir"
+            echo "  配置文件: $config_file"
+        fi
+        
+        echo ""
+    done
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    
+    break_end
+}
+
+# Sub-Store 主菜单
+manage_substore() {
+    while true; do
+        clear
+        echo "=================================="
+        echo "   Sub-Store 多实例管理"
+        echo "=================================="
+        echo ""
+        echo "1. 安装新实例"
+        echo "2. 更新实例"
+        echo "3. 卸载实例"
+        echo "4. 查看已部署实例"
+        echo "0. 返回主菜单"
+        echo "=================================="
+        read -e -p "请选择操作 [0-4]: " choice
+        
+        case $choice in
+            1)
+                install_substore_instance
+                ;;
+            2)
+                update_substore_instance
+                ;;
+            3)
+                uninstall_substore_instance
+                ;;
+            4)
+                list_substore_instances
+                ;;
+            0)
+                return
+                ;;
+            *)
+                echo "无效的选择"
+                sleep 2
+                ;;
+        esac
+    done
 }
 
 #=============================================================================
