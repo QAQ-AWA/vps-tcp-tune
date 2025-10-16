@@ -4686,6 +4686,9 @@ configure_nginx_proxy() {
                                     nginx|nginx*)
                                         port_80_service="nginx"
                                         ;;
+                                    openresty)
+                                        port_80_service="openresty"
+                                        ;;
                                     apache2|httpd)
                                         port_80_service="apache2"
                                         ;;
@@ -4712,28 +4715,53 @@ configure_nginx_proxy() {
                                     [Yy])
                                         echo "正在停止 $port_80_process..."
                                         
-                                        # 如果是已知服务，使用 systemctl
+                                        local stopped=false
+                                        
+                                        # 如果是已知服务，使用 systemctl 或专用命令
                                         if [ "$port_80_service" = "nginx" ] || [ "$port_80_service" = "apache2" ] || [ "$port_80_service" = "caddy" ]; then
                                             systemctl stop "$port_80_service" > /dev/null 2>&1
                                             if [ $? -eq 0 ]; then
                                                 echo -e "${gl_lv}✅ 已停止 $port_80_service${gl_bai}"
+                                                stopped=true
+                                            fi
+                                        elif [ "$port_80_service" = "openresty" ]; then
+                                            # OpenResty 特殊处理
+                                            # 尝试多种停止方法
+                                            if systemctl stop openresty > /dev/null 2>&1; then
+                                                echo -e "${gl_lv}✅ 已停止 openresty (systemctl)${gl_bai}"
+                                                stopped=true
+                                            elif command -v openresty &>/dev/null && openresty -s quit > /dev/null 2>&1; then
+                                                echo -e "${gl_lv}✅ 已停止 openresty (openresty -s quit)${gl_bai}"
+                                                stopped=true
+                                            elif [ -f /usr/local/openresty/nginx/sbin/nginx ]; then
+                                                /usr/local/openresty/nginx/sbin/nginx -s quit > /dev/null 2>&1
+                                                echo -e "${gl_lv}✅ 已停止 openresty (nginx -s quit)${gl_bai}"
+                                                stopped=true
+                                            fi
+                                        fi
+                                        
+                                        # 如果上述方法都失败，尝试 killall
+                                        if [ "$stopped" = false ]; then
+                                            if [ "$port_80_service" = "openresty" ]; then
+                                                echo -e "${gl_huang}⚠️  systemctl/命令停止失败，尝试 killall...${gl_bai}"
+                                                killall -9 openresty > /dev/null 2>&1
+                                                sleep 2
+                                                stopped=true
                                             else
                                                 echo -e "${gl_huang}⚠️  systemctl 停止失败，尝试直接终止进程...${gl_bai}"
                                                 kill "$port_80_pid" > /dev/null 2>&1
                                                 sleep 1
+                                                
+                                                # 检查是否成功
+                                                if ps -p "$port_80_pid" > /dev/null 2>&1; then
+                                                    echo -e "${gl_huang}⚠️  进程未停止，尝试强制终止...${gl_bai}"
+                                                    kill -9 "$port_80_pid" > /dev/null 2>&1
+                                                    sleep 1
+                                                fi
+                                                
+                                                echo -e "${gl_lv}✅ 已停止进程 $port_80_pid${gl_bai}"
+                                                stopped=true
                                             fi
-                                        else
-                                            # 未知服务，直接终止进程
-                                            kill "$port_80_pid" > /dev/null 2>&1
-                                            sleep 1
-                                            
-                                            # 检查是否成功
-                                            if ps -p "$port_80_pid" > /dev/null 2>&1; then
-                                                echo -e "${gl_huang}⚠️  进程未停止，尝试强制终止...${gl_bai}"
-                                                kill -9 "$port_80_pid" > /dev/null 2>&1
-                                            fi
-                                            
-                                            echo -e "${gl_lv}✅ 已停止进程 $port_80_pid${gl_bai}"
                                         fi
                                         
                                         sleep 2
