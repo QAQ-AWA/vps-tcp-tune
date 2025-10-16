@@ -331,9 +331,10 @@ EOF
     echo "------------------------------------------------"
     echo ""
     echo -e "${gl_huang}提示：${gl_bai}"
-    echo "1. 如果仍显示 IPv6 地址，可以在 curl 命令中使用 -4 参数强制 IPv4"
-    echo "   例如: curl -4 ip.sb"
-    echo "2. 某些应用可能需要重启才能应用新配置"
+    echo "1. 配置已生效，无需重启系统"
+    echo "2. 新启动的程序将自动使用 IPv4 优先"
+    echo "3. 如需强制指定，可使用: curl -4 ip.sb (强制IPv4) 或 curl -6 ip.sb (强制IPv6)"
+    echo "4. 已运行的长连接服务（如Nginx、Docker容器）可能需要重启服务才能应用"
     echo ""
 
     break_end
@@ -404,9 +405,10 @@ EOF
     echo "------------------------------------------------"
     echo ""
     echo -e "${gl_huang}提示：${gl_bai}"
-    echo "1. 如果仍显示 IPv4 地址，可以在 curl 命令中使用 -6 参数强制 IPv6"
-    echo "   例如: curl -6 ip.sb"
-    echo "2. 某些应用可能需要重启才能应用新配置"
+    echo "1. 配置已生效，无需重启系统"
+    echo "2. 新启动的程序将自动使用 IPv6 优先"
+    echo "3. 如需强制指定，可使用: curl -6 ip.sb (强制IPv6) 或 curl -4 ip.sb (强制IPv4)"
+    echo "4. 已运行的长连接服务（如Nginx、Docker容器）可能需要重启服务才能应用"
     echo ""
 
     break_end
@@ -1387,12 +1389,53 @@ check_all_inbound_connections() {
     echo -e "${gl_zi}[1/3] 获取所有 ESTABLISHED 入站连接...${gl_bai}"
     echo ""
     
-    # 获取所有 ESTABLISHED 连接的远程地址（简单版本）
-    local connections=$(ss -tn state established 2>/dev/null | awk 'NR>1 {print $5}' | grep -v "^$")
+    # 获取所有 ESTABLISHED 连接的远程地址（兼容多种ss版本）
+    # 尝试多种方式获取连接
+    local connections=""
     
+    # 方法1：使用 state 参数（新版ss）
+    if ss -tn state established &>/dev/null; then
+        connections=$(ss -tn state established 2>/dev/null | awk 'NR>1 && $1=="ESTAB" {print $5}' | grep -v "^$")
+    fi
+    
+    # 方法2：使用 grep ESTAB（兼容旧版ss）
     if [ -z "$connections" ]; then
+        connections=$(ss -tn 2>/dev/null | grep ESTAB | awk '{print $5}' | grep -v "^$")
+    fi
+    
+    # 方法3：使用 netstat 作为后备
+    if [ -z "$connections" ] && command -v netstat &>/dev/null; then
+        connections=$(netstat -tn 2>/dev/null | grep ESTABLISHED | awk '{print $5}' | grep -v "^$")
+    fi
+    
+    # 过滤本地回环连接（可选，保留所有连接以便调试）
+    # connections=$(echo "$connections" | grep -v "^127.0.0.1" | grep -v "^\[::1\]")
+    
+    # 调试信息
+    local conn_count=$(echo "$connections" | wc -l | tr -d ' ')
+    echo -e "${gl_zi}检测到 ${gl_lv}${conn_count}${gl_zi} 个ESTABLISHED连接${gl_bai}"
+    echo ""
+    
+    if [ -z "$connections" ] || [ "$conn_count" -eq 0 ]; then
         echo -e "${gl_huang}未发现任何活跃连接${gl_bai}"
         echo ""
+        echo "可能的原因："
+        echo "1. 当前确实没有建立的TCP连接"
+        echo "2. 需要root权限查看所有连接（请使用 sudo 运行）"
+        echo "3. 转发可能使用UDP协议（请检查 ss -un 或 netstat -un）"
+        echo ""
+        echo "快速检查命令："
+        echo "  查看TCP: ss -tn | grep ESTAB"
+        echo "  查看UDP: ss -un"
+        echo "  查看监听端口: ss -tlnp"
+        echo "  查看所有连接: ss -antp"
+        echo ""
+        
+        # 显示原始ss输出用于调试
+        echo -e "${gl_zi}═══ 原始连接信息（调试用） ═══${gl_bai}"
+        ss -tn 2>/dev/null | head -20
+        echo ""
+        
         break_end
         return 1
     fi
