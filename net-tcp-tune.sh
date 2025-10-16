@@ -4661,20 +4661,123 @@ configure_nginx_proxy() {
                 
                 case "$confirm_cert" in
                     [Yy])
-                        # 临时停止 nginx
-                        systemctl stop nginx
+                        # 检查并处理端口占用
+                        echo ""
+                        echo "检查端口占用情况..."
                         
-                        # 申请证书
-                        certbot certonly --standalone -d "$domain" --non-interactive --agree-tos --register-unsafely-without-email
+                        local port_80_pid=""
+                        local port_80_process=""
+                        local port_80_service=""
                         
-                        if [ $? -eq 0 ]; then
-                            ssl_cert_path="/etc/letsencrypt/live/$domain/fullchain.pem"
-                            ssl_key_path="/etc/letsencrypt/live/$domain/privkey.pem"
-                            echo -e "${gl_lv}✅ 证书申请成功${gl_bai}"
+                        # 检查 80 端口
+                        if netstat -tlnp 2>/dev/null | grep -q ":80 " || ss -tlnp 2>/dev/null | grep -q ":80 "; then
+                            # 获取占用 80 端口的进程信息
+                            if command -v netstat &>/dev/null; then
+                                port_80_pid=$(netstat -tlnp 2>/dev/null | grep ":80 " | awk '{print $7}' | cut -d'/' -f1 | head -1)
+                                port_80_process=$(netstat -tlnp 2>/dev/null | grep ":80 " | awk '{print $7}' | cut -d'/' -f2 | head -1)
+                            else
+                                port_80_pid=$(ss -tlnp 2>/dev/null | grep ":80 " | grep -oP 'pid=\K[0-9]+' | head -1)
+                                port_80_process=$(ps -p "$port_80_pid" -o comm= 2>/dev/null)
+                            fi
+                            
+                            # 尝试识别对应的服务
+                            if [ -n "$port_80_process" ]; then
+                                case "$port_80_process" in
+                                    nginx|nginx*)
+                                        port_80_service="nginx"
+                                        ;;
+                                    apache2|httpd)
+                                        port_80_service="apache2"
+                                        ;;
+                                    caddy)
+                                        port_80_service="caddy"
+                                        ;;
+                                    *)
+                                        port_80_service="$port_80_process"
+                                        ;;
+                                esac
+                                
+                                echo ""
+                                echo -e "${gl_huang}⚠️  端口 80 已被占用${gl_bai}"
+                                echo "  进程名称: $port_80_process"
+                                echo "  进程 PID: $port_80_pid"
+                                if [ "$port_80_service" != "$port_80_process" ]; then
+                                    echo "  可能的服务: $port_80_service"
+                                fi
+                                echo ""
+                                
+                                read -e -p "是否停止该进程以继续申请证书？(Y/N): " stop_port_80
+                                
+                                case "$stop_port_80" in
+                                    [Yy])
+                                        echo "正在停止 $port_80_process..."
+                                        
+                                        # 如果是已知服务，使用 systemctl
+                                        if [ "$port_80_service" = "nginx" ] || [ "$port_80_service" = "apache2" ] || [ "$port_80_service" = "caddy" ]; then
+                                            systemctl stop "$port_80_service" > /dev/null 2>&1
+                                            if [ $? -eq 0 ]; then
+                                                echo -e "${gl_lv}✅ 已停止 $port_80_service${gl_bai}"
+                                            else
+                                                echo -e "${gl_huang}⚠️  systemctl 停止失败，尝试直接终止进程...${gl_bai}"
+                                                kill "$port_80_pid" > /dev/null 2>&1
+                                                sleep 1
+                                            fi
+                                        else
+                                            # 未知服务，直接终止进程
+                                            kill "$port_80_pid" > /dev/null 2>&1
+                                            sleep 1
+                                            
+                                            # 检查是否成功
+                                            if ps -p "$port_80_pid" > /dev/null 2>&1; then
+                                                echo -e "${gl_huang}⚠️  进程未停止，尝试强制终止...${gl_bai}"
+                                                kill -9 "$port_80_pid" > /dev/null 2>&1
+                                            fi
+                                            
+                                            echo -e "${gl_lv}✅ 已停止进程 $port_80_pid${gl_bai}"
+                                        fi
+                                        
+                                        sleep 2
+                                        
+                                        # 再次检查端口
+                                        if netstat -tlnp 2>/dev/null | grep -q ":80 " || ss -tlnp 2>/dev/null | grep -q ":80 "; then
+                                            echo -e "${gl_hong}❌ 端口 80 仍被占用，无法继续${gl_bai}"
+                                            ssl_cert_path="/etc/letsencrypt/live/$domain/fullchain.pem"
+                                            ssl_key_path="/etc/letsencrypt/live/$domain/privkey.pem"
+                                            echo -e "${gl_huang}⚠️  将生成配置模板，请手动申请证书后修改配置${gl_bai}"
+                                        else
+                                            echo -e "${gl_lv}✅ 端口 80 已释放${gl_bai}"
+                                        fi
+                                        ;;
+                                    *)
+                                        echo "已取消，将生成配置模板"
+                                        ssl_cert_path="/etc/letsencrypt/live/$domain/fullchain.pem"
+                                        ssl_key_path="/etc/letsencrypt/live/$domain/privkey.pem"
+                                        ;;
+                                esac
+                            fi
                         else
-                            echo -e "${gl_hong}❌ 证书申请失败，请检查域名解析${gl_bai}"
-                            ssl_cert_path="/etc/letsencrypt/live/$domain/fullchain.pem"
-                            ssl_key_path="/etc/letsencrypt/live/$domain/privkey.pem"
+                            echo -e "${gl_lv}✅ 端口 80 未被占用${gl_bai}"
+                            # 临时停止 nginx（如果在运行）
+                            systemctl is-active --quiet nginx && systemctl stop nginx
+                        fi
+                        
+                        # 如果端口检查通过或已释放，申请证书
+                        if ! netstat -tlnp 2>/dev/null | grep -q ":80 " && ! ss -tlnp 2>/dev/null | grep -q ":80 "; then
+                            echo ""
+                            echo "正在申请 Let's Encrypt 证书..."
+                            
+                            # 申请证书
+                            certbot certonly --standalone -d "$domain" --non-interactive --agree-tos --register-unsafely-without-email
+                            
+                            if [ $? -eq 0 ]; then
+                                ssl_cert_path="/etc/letsencrypt/live/$domain/fullchain.pem"
+                                ssl_key_path="/etc/letsencrypt/live/$domain/privkey.pem"
+                                echo -e "${gl_lv}✅ 证书申请成功${gl_bai}"
+                            else
+                                echo -e "${gl_hong}❌ 证书申请失败，请检查域名解析${gl_bai}"
+                                ssl_cert_path="/etc/letsencrypt/live/$domain/fullchain.pem"
+                                ssl_key_path="/etc/letsencrypt/live/$domain/privkey.pem"
+                            fi
                         fi
                         ;;
                     *)
