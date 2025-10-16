@@ -515,6 +515,12 @@ HTTP-META 端口: 9876（回车使用默认）
   - 启动容器
   - 生成 Nginx 配置模板
   - 生成 Cloudflare Tunnel 配置
+
+# 5. 交互式配置向导（NEW！）
+安装完成后，脚本会自动引导你配置反向代理：
+  - 选择1：Nginx 反向代理（自动化配置，支持 Let's Encrypt）
+  - 选择2：Cloudflare Tunnel（全自动部署，无需开端口）
+  - 选择3：跳过（稍后手动配置）
 ```
 
 **访问地址格式**：
@@ -524,7 +530,35 @@ https://sub.你的域名.com?api=https://sub.你的域名.com/my-subs
       前端页面                                后端API路径
 ```
 
-**反向代理配置（二选一）**：
+**反向代理配置（交互式配置 vs 手动配置）**：
+
+### 🎯 方案1：交互式配置向导（推荐）
+
+安装实例后，脚本会自动进入配置向导：
+
+**【选项1】Nginx 自动化配置**
+- ✅ 自动检测并安装 Nginx
+- ✅ 交互式输入域名
+- ✅ 支持 3 种 SSL 证书方式：
+  - Cloudflare 证书（手动上传）
+  - **Let's Encrypt 自动申请**（推荐）
+  - 仅 HTTP（不推荐）
+- ✅ 自动生成配置到 `/etc/nginx/conf.d/`
+- ✅ 自动测试配置并重载 Nginx
+- ✅ 完成后立即显示访问地址
+
+**【选项2】Cloudflare Tunnel 自动化部署**
+- ✅ 自动下载并安装 `cloudflared`
+- ✅ 引导登录 Cloudflare 账户
+- ✅ 自动创建隧道和配置 DNS
+- ✅ 生成配置文件并创建 systemd 服务
+- ✅ 自动启动服务
+- ✅ 完成后立即显示访问地址和管理命令
+
+**【选项3】跳过配置**
+- 生成配置模板文件供稍后手动配置
+
+### 📝 方案2：手动配置（适合高级用户）
 
 **【方法1】Nginx 反向代理**
 ```nginx
@@ -658,12 +692,34 @@ A: v2.5版本优化了菜单顺序，将常用的系统内核参数优化和CAKE
   - Docker/Docker Compose 依赖自动安装（国内/国外镜像可选）
   - 菜单位置：选项 30（未安装）/ 32（已安装）
 
+- 🎯 **交互式配置向导（核心亮点）**
+  - 🚀 **Nginx 自动化配置**
+    - 自动检测并安装 Nginx
+    - 交互式输入域名
+    - 支持 Let's Encrypt 自动申请证书（推荐）
+    - 支持 Cloudflare 证书手动上传
+    - 支持仅 HTTP 模式
+    - 自动生成配置到 `/etc/nginx/conf.d/`
+    - 自动测试配置并重载 Nginx
+    - 完成后立即显示访问地址
+  - 🌐 **Cloudflare Tunnel 自动化部署**
+    - 自动下载并安装 `cloudflared`（支持 x86_64/aarch64）
+    - 引导登录 Cloudflare 账户
+    - 自动创建隧道和配置 DNS 路由
+    - 生成配置文件并创建 systemd 服务
+    - 自动启动服务并验证状态
+    - 完成后显示访问地址和管理命令
+  - ⚙️ **灵活选择**
+    - 可选择跳过配置，生成模板供稍后手动配置
+    - 配置失败时提供详细错误信息和手动修复指南
+
 - 🔧 **反向代理配置自动生成**
   - 自动生成 Nginx 反向代理配置模板
   - 自动生成 Cloudflare Tunnel 配置文件
   - 前后端双端口代理配置（前端 9876 + 后端 3001）
   - 配置文件保存在 `/root/sub-store-nginx-{实例编号}.conf`
   - 支持 SSL/TLS 配置和 WebSocket
+  - HTTP → HTTPS 自动重定向
 
 - 🎯 **核心特性**
   - 前后端分离架构（`xream/sub-store:http-meta` 镜像）
@@ -681,7 +737,8 @@ A: v2.5版本优化了菜单顺序，将常用的系统内核参数优化和CAKE
 - 📚 **文档完善**
   - README 新增详细的 Sub-Store 功能说明
   - 包含完整的安装流程、配置示例和常用命令
-  - Nginx 和 Cloudflare Tunnel 配置指南
+  - **交互式配置向导完整说明**
+  - Nginx 和 Cloudflare Tunnel 自动化配置指南
   - 多实例场景说明
 
 ### v2.7.0 (2025-10-14) - Realm Analysis & Connection Detection

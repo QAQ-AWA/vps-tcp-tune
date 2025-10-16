@@ -4459,10 +4459,554 @@ CFEOF
         echo "  - 停止服务: docker compose -f $config_file down"
         echo "  - 重启服务: docker compose -f $config_file restart"
         echo ""
+        
+        # 交互式配置向导
+        echo -e "${gl_kjlan}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${gl_bai}"
+        echo -e "${gl_huang}📌 接下来需要配置反向代理才能使用${gl_bai}"
+        echo -e "${gl_kjlan}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${gl_bai}"
+        echo ""
+        echo "请选择配置方式："
+        echo "1. 配置 Nginx 反向代理（推荐，高性能）"
+        echo "2. 配置 Cloudflare Tunnel（无需开端口）"
+        echo "3. 跳过配置（稍后手动配置）"
+        echo ""
+        
+        local proxy_choice
+        read -e -p "请选择 [1-3]: " proxy_choice
+        
+        case "$proxy_choice" in
+            1)
+                # Nginx 配置向导
+                configure_nginx_proxy "$instance_num" "$http_port" "$api_port" "$access_path" "$nginx_conf"
+                ;;
+            2)
+                # Cloudflare Tunnel 配置向导
+                configure_cf_tunnel "$instance_num" "$http_port" "$api_port" "$access_path" "$cf_tunnel_conf"
+                ;;
+            3)
+                echo ""
+                echo -e "${gl_huang}已跳过配置${gl_bai}"
+                echo "稍后可手动配置，配置文件位于："
+                echo "  - Nginx: $nginx_conf"
+                echo "  - CF Tunnel: $cf_tunnel_conf"
+                echo ""
+                ;;
+            *)
+                echo ""
+                echo -e "${gl_huang}无效选择，已跳过配置${gl_bai}"
+                ;;
+        esac
     else
         echo -e "${gl_hong}启动失败，请检查配置和日志${gl_bai}"
         break_end
         return 1
+    fi
+    
+    break_end
+}
+
+# Nginx 反向代理配置向导
+configure_nginx_proxy() {
+    local instance_num=$1
+    local http_port=$2
+    local api_port=$3
+    local access_path=$4
+    local nginx_conf=$5
+    
+    clear
+    echo -e "${gl_kjlan}=================================="
+    echo "   Nginx 反向代理配置向导"
+    echo "==================================${gl_bai}"
+    echo ""
+    
+    # 检查 Nginx 是否安装
+    if ! command -v nginx &>/dev/null; then
+        echo -e "${gl_hong}Nginx 未安装${gl_bai}"
+        echo ""
+        read -e -p "是否现在安装 Nginx？(Y/N): " install_nginx
+        
+        case "$install_nginx" in
+            [Yy])
+                echo ""
+                echo "正在安装 Nginx..."
+                if command -v apt &>/dev/null; then
+                    apt update -y > /dev/null 2>&1
+                    apt install -y nginx > /dev/null 2>&1
+                elif command -v yum &>/dev/null; then
+                    yum install -y nginx > /dev/null 2>&1
+                else
+                    echo -e "${gl_hong}不支持的包管理器${gl_bai}"
+                    break_end
+                    return 1
+                fi
+                
+                if [ $? -eq 0 ]; then
+                    systemctl enable nginx
+                    systemctl start nginx
+                    echo -e "${gl_lv}✅ Nginx 安装成功${gl_bai}"
+                else
+                    echo -e "${gl_hong}❌ Nginx 安装失败${gl_bai}"
+                    break_end
+                    return 1
+                fi
+                ;;
+            *)
+                echo "已取消，请手动安装 Nginx 后配置"
+                break_end
+                return 1
+                ;;
+        esac
+    else
+        echo -e "${gl_lv}✅ Nginx 已安装${gl_bai}"
+    fi
+    
+    echo ""
+    echo -e "${gl_zi}[步骤 1/4] 输入域名${gl_bai}"
+    echo ""
+    
+    local domain
+    while true; do
+        read -e -p "请输入你的域名（如 sub.example.com）: " domain
+        
+        if [ -z "$domain" ]; then
+            echo -e "${gl_hong}域名不能为空${gl_bai}"
+            continue
+        fi
+        
+        echo -e "${gl_lv}✅ 域名: $domain${gl_bai}"
+        break
+    done
+    
+    echo ""
+    echo -e "${gl_zi}[步骤 2/4] SSL 证书配置${gl_bai}"
+    echo ""
+    echo "请选择 SSL 证书方式："
+    echo "1. 使用 Cloudflare 证书（自行上传）"
+    echo "2. 使用 Let's Encrypt（自动申请，推荐）"
+    echo "3. 暂不配置 SSL（仅 HTTP，不推荐）"
+    echo ""
+    
+    local ssl_choice
+    read -e -p "请选择 [1-3]: " ssl_choice
+    
+    local ssl_cert_path=""
+    local ssl_key_path=""
+    local use_ssl=true
+    
+    case "$ssl_choice" in
+        1)
+            echo ""
+            read -e -p "请输入证书文件路径（如 /root/cert.pem）: " ssl_cert_path
+            read -e -p "请输入密钥文件路径（如 /root/key.pem）: " ssl_key_path
+            
+            if [ ! -f "$ssl_cert_path" ] || [ ! -f "$ssl_key_path" ]; then
+                echo -e "${gl_huang}⚠️  证书文件不存在，将生成配置模板，请稍后手动修改${gl_bai}"
+                ssl_cert_path="/path/to/cert.pem"
+                ssl_key_path="/path/to/key.pem"
+            fi
+            ;;
+        2)
+            echo ""
+            echo "检查 certbot 是否安装..."
+            
+            if ! command -v certbot &>/dev/null; then
+                echo "certbot 未安装，正在安装..."
+                if command -v apt &>/dev/null; then
+                    apt install -y certbot python3-certbot-nginx > /dev/null 2>&1
+                else
+                    echo -e "${gl_hong}请手动安装 certbot${gl_bai}"
+                    ssl_cert_path="/etc/letsencrypt/live/$domain/fullchain.pem"
+                    ssl_key_path="/etc/letsencrypt/live/$domain/privkey.pem"
+                fi
+            fi
+            
+            if command -v certbot &>/dev/null; then
+                echo -e "${gl_lv}✅ certbot 已安装${gl_bai}"
+                echo ""
+                echo "准备申请 Let's Encrypt 证书..."
+                echo -e "${gl_huang}注意：请确保域名已解析到本服务器IP${gl_bai}"
+                echo ""
+                read -e -p "确认域名已解析，开始申请证书？(Y/N): " confirm_cert
+                
+                case "$confirm_cert" in
+                    [Yy])
+                        # 临时停止 nginx
+                        systemctl stop nginx
+                        
+                        # 申请证书
+                        certbot certonly --standalone -d "$domain" --non-interactive --agree-tos --register-unsafely-without-email
+                        
+                        if [ $? -eq 0 ]; then
+                            ssl_cert_path="/etc/letsencrypt/live/$domain/fullchain.pem"
+                            ssl_key_path="/etc/letsencrypt/live/$domain/privkey.pem"
+                            echo -e "${gl_lv}✅ 证书申请成功${gl_bai}"
+                        else
+                            echo -e "${gl_hong}❌ 证书申请失败，请检查域名解析${gl_bai}"
+                            ssl_cert_path="/etc/letsencrypt/live/$domain/fullchain.pem"
+                            ssl_key_path="/etc/letsencrypt/live/$domain/privkey.pem"
+                        fi
+                        ;;
+                    *)
+                        ssl_cert_path="/etc/letsencrypt/live/$domain/fullchain.pem"
+                        ssl_key_path="/etc/letsencrypt/live/$domain/privkey.pem"
+                        ;;
+                esac
+            else
+                ssl_cert_path="/etc/letsencrypt/live/$domain/fullchain.pem"
+                ssl_key_path="/etc/letsencrypt/live/$domain/privkey.pem"
+            fi
+            ;;
+        3)
+            echo ""
+            echo -e "${gl_huang}⚠️  不使用 SSL，仅配置 HTTP（不安全）${gl_bai}"
+            use_ssl=false
+            ;;
+        *)
+            echo -e "${gl_huang}无效选择，默认使用占位符${gl_bai}"
+            ssl_cert_path="/path/to/cert.pem"
+            ssl_key_path="/path/to/key.pem"
+            ;;
+    esac
+    
+    echo ""
+    echo -e "${gl_zi}[步骤 3/4] 生成 Nginx 配置${gl_bai}"
+    echo ""
+    
+    # 生成最终配置文件
+    local final_nginx_conf="/etc/nginx/conf.d/sub-store-$instance_num.conf"
+    
+    if [ "$use_ssl" = true ]; then
+        cat > "$final_nginx_conf" << NGINXEOF
+# Sub-Store Nginx 配置 - 实例 $instance_num
+# 自动生成于 $(date '+%Y-%m-%d %H:%M:%S')
+
+server {
+    listen 443 ssl http2;
+    server_name $domain;
+    
+    # SSL 证书配置
+    ssl_certificate $ssl_cert_path;
+    ssl_certificate_key $ssl_key_path;
+    
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_ciphers HIGH:!aNULL:!MD5;
+    ssl_prefer_server_ciphers on;
+    
+    # 前端页面（HTTP-META）
+    location / {
+        proxy_pass http://127.0.0.1:$http_port;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+        
+        # WebSocket 支持
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade \$http_upgrade;
+        proxy_set_header Connection "upgrade";
+    }
+    
+    # 后端 API
+    location /$access_path {
+        proxy_pass http://127.0.0.1:$api_port;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+    }
+}
+
+# HTTP 重定向到 HTTPS
+server {
+    listen 80;
+    server_name $domain;
+    return 301 https://\$server_name\$request_uri;
+}
+NGINXEOF
+    else
+        # 仅 HTTP 配置
+        cat > "$final_nginx_conf" << NGINXEOF
+# Sub-Store Nginx 配置 - 实例 $instance_num (仅HTTP)
+# 自动生成于 $(date '+%Y-%m-%d %H:%M:%S')
+
+server {
+    listen 80;
+    server_name $domain;
+    
+    # 前端页面（HTTP-META）
+    location / {
+        proxy_pass http://127.0.0.1:$http_port;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+        
+        # WebSocket 支持
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade \$http_upgrade;
+        proxy_set_header Connection "upgrade";
+    }
+    
+    # 后端 API
+    location /$access_path {
+        proxy_pass http://127.0.0.1:$api_port;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+    }
+}
+NGINXEOF
+    fi
+    
+    echo -e "${gl_lv}✅ 配置文件已生成: $final_nginx_conf${gl_bai}"
+    
+    echo ""
+    echo -e "${gl_zi}[步骤 4/4] 应用配置${gl_bai}"
+    echo ""
+    
+    # 测试配置
+    echo "正在测试 Nginx 配置..."
+    if nginx -t >/dev/null 2>&1; then
+        echo -e "${gl_lv}✅ 配置测试通过${gl_bai}"
+        
+        # 重载 Nginx
+        echo "正在重载 Nginx..."
+        systemctl reload nginx
+        
+        if [ $? -eq 0 ]; then
+            echo -e "${gl_lv}✅ Nginx 重载成功${gl_bai}"
+            echo ""
+            echo -e "${gl_kjlan}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${gl_bai}"
+            echo -e "${gl_lv}🎉 配置完成！${gl_bai}"
+            echo -e "${gl_kjlan}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${gl_bai}"
+            echo ""
+            
+            if [ "$use_ssl" = true ]; then
+                echo -e "访问地址: ${gl_lv}https://$domain?api=https://$domain/$access_path${gl_bai}"
+            else
+                echo -e "访问地址: ${gl_lv}http://$domain?api=http://$domain/$access_path${gl_bai}"
+            fi
+            
+            echo ""
+        else
+            echo -e "${gl_hong}❌ Nginx 重载失败${gl_bai}"
+            echo "请检查配置: nginx -t"
+        fi
+    else
+        echo -e "${gl_hong}❌ 配置测试失败${gl_bai}"
+        echo ""
+        nginx -t
+        echo ""
+        echo "请手动修复配置文件: $final_nginx_conf"
+    fi
+    
+    break_end
+}
+
+# Cloudflare Tunnel 配置向导
+configure_cf_tunnel() {
+    local instance_num=$1
+    local http_port=$2
+    local api_port=$3
+    local access_path=$4
+    local cf_tunnel_conf=$5
+    
+    clear
+    echo -e "${gl_kjlan}=================================="
+    echo "  Cloudflare Tunnel 配置向导"
+    echo "==================================${gl_bai}"
+    echo ""
+    
+    # 检查 cloudflared 是否安装
+    if ! command -v cloudflared &>/dev/null; then
+        echo -e "${gl_huang}cloudflared 未安装${gl_bai}"
+        echo ""
+        read -e -p "是否现在安装 cloudflared？(Y/N): " install_cf
+        
+        case "$install_cf" in
+            [Yy])
+                echo ""
+                echo "正在下载 cloudflared..."
+                
+                local cpu_arch=$(uname -m)
+                local download_url
+                
+                case "$cpu_arch" in
+                    x86_64)
+                        download_url="https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64"
+                        ;;
+                    aarch64)
+                        download_url="https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-arm64"
+                        ;;
+                    *)
+                        echo -e "${gl_hong}不支持的架构: $cpu_arch${gl_bai}"
+                        break_end
+                        return 1
+                        ;;
+                esac
+                
+                wget -O /usr/local/bin/cloudflared "$download_url"
+                chmod +x /usr/local/bin/cloudflared
+                
+                if [ $? -eq 0 ]; then
+                    echo -e "${gl_lv}✅ cloudflared 安装成功${gl_bai}"
+                else
+                    echo -e "${gl_hong}❌ cloudflared 安装失败${gl_bai}"
+                    break_end
+                    return 1
+                fi
+                ;;
+            *)
+                echo "已取消，请手动安装 cloudflared 后配置"
+                break_end
+                return 1
+                ;;
+        esac
+    else
+        echo -e "${gl_lv}✅ cloudflared 已安装${gl_bai}"
+    fi
+    
+    echo ""
+    echo -e "${gl_zi}[步骤 1/5] Cloudflare 账户登录${gl_bai}"
+    echo ""
+    echo "即将打开浏览器进行 Cloudflare 登录..."
+    echo -e "${gl_huang}请在浏览器中完成授权${gl_bai}"
+    echo ""
+    read -e -p "按回车继续..."
+    
+    cloudflared tunnel login
+    
+    if [ $? -ne 0 ]; then
+        echo -e "${gl_hong}❌ 登录失败${gl_bai}"
+        break_end
+        return 1
+    fi
+    
+    echo -e "${gl_lv}✅ 登录成功${gl_bai}"
+    
+    echo ""
+    echo -e "${gl_zi}[步骤 2/5] 创建隧道${gl_bai}"
+    echo ""
+    
+    local tunnel_name="sub-store-$instance_num"
+    echo "隧道名称: $tunnel_name"
+    
+    cloudflared tunnel create "$tunnel_name"
+    
+    if [ $? -ne 0 ]; then
+        echo -e "${gl_hong}❌ 创建隧道失败${gl_bai}"
+        break_end
+        return 1
+    fi
+    
+    # 获取 tunnel ID
+    local tunnel_id=$(cloudflared tunnel list | grep "$tunnel_name" | awk '{print $1}')
+    
+    if [ -z "$tunnel_id" ]; then
+        echo -e "${gl_hong}❌ 无法获取 tunnel ID${gl_bai}"
+        break_end
+        return 1
+    fi
+    
+    echo -e "${gl_lv}✅ 隧道创建成功${gl_bai}"
+    echo "Tunnel ID: $tunnel_id"
+    
+    echo ""
+    echo -e "${gl_zi}[步骤 3/5] 输入域名${gl_bai}"
+    echo ""
+    
+    local domain
+    read -e -p "请输入你的域名（如 sub.example.com）: " domain
+    
+    if [ -z "$domain" ]; then
+        echo -e "${gl_hong}域名不能为空${gl_bai}"
+        break_end
+        return 1
+    fi
+    
+    echo ""
+    echo -e "${gl_zi}[步骤 4/5] 配置 DNS 路由${gl_bai}"
+    echo ""
+    
+    cloudflared tunnel route dns "$tunnel_id" "$domain"
+    
+    if [ $? -ne 0 ]; then
+        echo -e "${gl_hong}❌ DNS 配置失败${gl_bai}"
+        break_end
+        return 1
+    fi
+    
+    echo -e "${gl_lv}✅ DNS 配置成功${gl_bai}"
+    
+    echo ""
+    echo -e "${gl_zi}[步骤 5/5] 生成并启动配置${gl_bai}"
+    echo ""
+    
+    # 生成最终配置文件
+    local final_cf_conf="/root/sub-store-cf-tunnel-$instance_num.yaml"
+    cat > "$final_cf_conf" << CFEOF
+tunnel: $tunnel_id
+credentials-file: /root/.cloudflared/$tunnel_id.json
+
+ingress:
+  # 后端 API 路由（必须在前面，更具体的规则）
+  - hostname: $domain
+    path: /$access_path
+    service: http://127.0.0.1:$api_port
+  
+  # 前端页面路由（通配所有其他请求）
+  - hostname: $domain
+    service: http://127.0.0.1:$http_port
+  
+  # 默认规则（必须）
+  - service: http_status:404
+CFEOF
+    
+    echo -e "${gl_lv}✅ 配置文件已生成: $final_cf_conf${gl_bai}"
+    
+    echo ""
+    echo "正在启动 Cloudflare Tunnel..."
+    
+    # 创建 systemd 服务
+    cat > /etc/systemd/system/cloudflared-sub-store-$instance_num.service << SERVICEEOF
+[Unit]
+Description=Cloudflare Tunnel for Sub-Store Instance $instance_num
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/cloudflared tunnel --config $final_cf_conf run
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+SERVICEEOF
+    
+    systemctl daemon-reload
+    systemctl enable cloudflared-sub-store-$instance_num
+    systemctl start cloudflared-sub-store-$instance_num
+    
+    sleep 3
+    
+    if systemctl is-active --quiet cloudflared-sub-store-$instance_num; then
+        echo -e "${gl_lv}✅ Cloudflare Tunnel 启动成功${gl_bai}"
+        echo ""
+        echo -e "${gl_kjlan}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${gl_bai}"
+        echo -e "${gl_lv}🎉 配置完成！${gl_bai}"
+        echo -e "${gl_kjlan}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${gl_bai}"
+        echo ""
+        echo -e "访问地址: ${gl_lv}https://$domain?api=https://$domain/$access_path${gl_bai}"
+        echo ""
+        echo "服务管理："
+        echo "  - 查看状态: systemctl status cloudflared-sub-store-$instance_num"
+        echo "  - 查看日志: journalctl -u cloudflared-sub-store-$instance_num -f"
+        echo "  - 重启服务: systemctl restart cloudflared-sub-store-$instance_num"
+        echo ""
+    else
+        echo -e "${gl_hong}❌ Cloudflare Tunnel 启动失败${gl_bai}"
+        echo "查看日志: journalctl -u cloudflared-sub-store-$instance_num -n 50"
     fi
     
     break_end
