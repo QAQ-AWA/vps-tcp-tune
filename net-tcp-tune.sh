@@ -4611,6 +4611,7 @@ configure_nginx_proxy() {
     local ssl_cert_path=""
     local ssl_key_path=""
     local use_ssl=true
+    local stopped_service=""  # 记录被停止的服务
     
     case "$ssl_choice" in
         1)
@@ -4643,12 +4644,139 @@ configure_nginx_proxy() {
                 echo -e "${gl_lv}✅ certbot 已安装${gl_bai}"
                 echo ""
                 echo "准备申请 Let's Encrypt 证书..."
-                echo -e "${gl_huang}注意：请确保域名已解析到本服务器IP${gl_bai}"
                 echo ""
-                read -e -p "确认域名已解析，开始申请证书？(Y/N): " confirm_cert
                 
-                case "$confirm_cert" in
-                    [Yy])
+                # 修复6：验证域名解析
+                echo "正在检测域名配置..."
+                
+                # 获取服务器公网IP
+                local server_ip=$(curl -s ifconfig.me 2>/dev/null || curl -s ipinfo.io/ip 2>/dev/null || curl -s api.ipify.org 2>/dev/null)
+                
+                if [ -z "$server_ip" ]; then
+                    echo -e "${gl_huang}⚠️  无法获取服务器公网IP${gl_bai}"
+                else
+                    echo "  服务器 IP: $server_ip"
+                fi
+                
+                # 检查域名解析
+                local domain_ip=""
+                if command -v dig &>/dev/null; then
+                    domain_ip=$(dig +short "$domain" A | grep -Eo '([0-9]{1,3}\.){3}[0-9]{1,3}' | head -1)
+                elif command -v nslookup &>/dev/null; then
+                    domain_ip=$(nslookup "$domain" 2>/dev/null | grep -A1 "Name:" | tail -1 | awk '{print $2}')
+                fi
+                
+                if [ -z "$domain_ip" ]; then
+                    echo -e "${gl_hong}❌ 域名未解析${gl_bai}"
+                    echo "请先配置 DNS A 记录，将域名指向服务器IP"
+                    echo ""
+                    echo "查看诊断信息："
+                    echo "  dig $domain"
+                    echo "  或: nslookup $domain"
+                    echo ""
+                    
+                    read -e -p "是否继续（不推荐）？(Y/N): " force_continue
+                    case "$force_continue" in
+                        [Yy])
+                            echo -e "${gl_huang}⚠️  强制继续，证书申请可能失败${gl_bai}"
+                            ;;
+                        *)
+                            echo "已取消配置"
+                            break_end
+                            return 1
+                            ;;
+                    esac
+                else
+                    echo "  域名解析: $domain_ip"
+                    
+                    # 修复2：检查是否为 Cloudflare IP
+                    if echo "$domain_ip" | grep -qE "^(104\.1[6-9]\.|104\.2[0-9]\.|104\.3[0-1]\.|172\.6[4-9]\.|172\.7[0-1]\.|173\.245\.)"; then
+                        echo ""
+                        echo -e "${gl_huang}⚠️  检测到域名可能使用 Cloudflare 代理（橙云）${gl_bai}"
+                        echo ""
+                        echo "Cloudflare 橙云代理会拦截 Let's Encrypt HTTP-01 验证"
+                        echo ""
+                        echo "请选择："
+                        echo "1. 我已关闭 CF 代理（改为灰云），继续 Let's Encrypt"
+                        echo "2. 保持 CF 代理（橙云），改用 Cloudflare Origin Certificate"
+                        echo "3. 取消配置"
+                        echo ""
+                        
+                        read -e -p "请选择 [1-3]: " cf_choice
+                        
+                        case "$cf_choice" in
+                            1)
+                                echo ""
+                                echo -e "${gl_lv}继续 Let's Encrypt 证书申请...${gl_bai}"
+                                ;;
+                            2)
+                                echo ""
+                                echo -e "${gl_kjlan}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${gl_bai}"
+                                echo -e "${gl_zi}Cloudflare Origin Certificate 申请指南：${gl_bai}"
+                                echo -e "${gl_kjlan}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${gl_bai}"
+                                echo ""
+                                echo "1. 登录 Cloudflare Dashboard"
+                                echo "2. 选择你的域名"
+                                echo "3. SSL/TLS → Origin Server"
+                                echo "4. Create Certificate"
+                                echo "5. 选择有效期（建议 15 年）"
+                                echo "6. 下载证书（.pem）和私钥（.key）"
+                                echo ""
+                                echo "将文件上传到服务器后，输入路径："
+                                echo ""
+                                
+                                read -e -p "证书文件路径（如 /root/cert.pem）: " ssl_cert_path
+                                read -e -p "私钥文件路径（如 /root/key.pem）: " ssl_key_path
+                                
+                                if [ -f "$ssl_cert_path" ] && [ -f "$ssl_key_path" ]; then
+                                    echo -e "${gl_lv}✅ 证书文件验证通过${gl_bai}"
+                                    # 跳过 Let's Encrypt 申请流程
+                                    ssl_choice=1
+                                else
+                                    echo -e "${gl_hong}❌ 证书文件不存在${gl_bai}"
+                                    echo "  证书: $ssl_cert_path"
+                                    echo "  私钥: $ssl_key_path"
+                                    echo ""
+                                    echo "将生成配置模板，请稍后手动修改"
+                                    ssl_cert_path="/path/to/cloudflare-cert.pem"
+                                    ssl_key_path="/path/to/cloudflare-key.pem"
+                                    ssl_choice=1
+                                fi
+                                ;;
+                            *)
+                                echo "已取消配置"
+                                break_end
+                                return 1
+                                ;;
+                        esac
+                    elif [ -n "$server_ip" ] && [ "$server_ip" != "$domain_ip" ]; then
+                        echo ""
+                        echo -e "${gl_huang}⚠️  域名解析 IP 与服务器 IP 不匹配${gl_bai}"
+                        echo ""
+                        
+                        read -e -p "是否继续？(Y/N): " continue_mismatch
+                        case "$continue_mismatch" in
+                            [Yy])
+                                echo -e "${gl_huang}⚠️  继续配置，证书申请可能失败${gl_bai}"
+                                ;;
+                            *)
+                                echo "已取消配置"
+                                break_end
+                                return 1
+                                ;;
+                        esac
+                    else
+                        echo -e "${gl_lv}✅ 域名解析正常${gl_bai}"
+                    fi
+                fi
+                
+                # 如果选择了 Cloudflare Origin Certificate，跳过后续 Let's Encrypt 流程
+                if [ "$ssl_choice" != "1" ]; then
+                    echo ""
+                    read -e -p "确认开始申请 Let's Encrypt 证书？(Y/N): " confirm_cert
+                    
+                    case "$confirm_cert" in
+                        [Yy])
                         # 检查并处理端口占用
                         echo ""
                         echo "检查端口占用情况..."
@@ -4702,6 +4830,11 @@ configure_nginx_proxy() {
                                 case "$stop_port_80" in
                                     [Yy])
                                         echo "正在停止 $port_80_process..."
+                                        
+                                        # 修复4：记录停止的服务
+                                        if [ "$port_80_service" = "nginx" ] || [ "$port_80_service" = "openresty" ] || [ "$port_80_service" = "apache2" ] || [ "$port_80_service" = "caddy" ]; then
+                                            stopped_service="$port_80_service"
+                                        fi
                                         
                                         # 先尝试优雅停止
                                         if [ "$port_80_service" = "nginx" ]; then
@@ -4763,6 +4896,13 @@ configure_nginx_proxy() {
                                         # 再次检查端口
                                         if netstat -tlnp 2>/dev/null | grep -q ":80 " || ss -tlnp 2>/dev/null | grep -q ":80 "; then
                                             echo -e "${gl_hong}❌ 端口 80 仍被占用，无法继续${gl_bai}"
+                                            echo ""
+                                            # 修复5：增加详细错误日志提示
+                                            echo "查看占用进程："
+                                            echo "  netstat -tlnp | grep :80"
+                                            echo "  或: ss -tlnp | grep :80"
+                                            echo ""
+                                            
                                             ssl_cert_path="/etc/letsencrypt/live/$domain/fullchain.pem"
                                             ssl_key_path="/etc/letsencrypt/live/$domain/privkey.pem"
                                             echo -e "${gl_huang}⚠️  将生成配置模板，请手动申请证书后修改配置${gl_bai}"
@@ -4790,23 +4930,70 @@ configure_nginx_proxy() {
                             
                             # 申请证书
                             certbot certonly --standalone -d "$domain" --non-interactive --agree-tos --register-unsafely-without-email
+                            local cert_status=$?
                             
-                            if [ $? -eq 0 ]; then
+                            if [ $cert_status -eq 0 ]; then
                                 ssl_cert_path="/etc/letsencrypt/live/$domain/fullchain.pem"
                                 ssl_key_path="/etc/letsencrypt/live/$domain/privkey.pem"
                                 echo -e "${gl_lv}✅ 证书申请成功${gl_bai}"
                             else
-                                echo -e "${gl_hong}❌ 证书申请失败，请检查域名解析${gl_bai}"
-                                ssl_cert_path="/etc/letsencrypt/live/$domain/fullchain.pem"
-                                ssl_key_path="/etc/letsencrypt/live/$domain/privkey.pem"
+                                # 修复1：增强证书申请失败处理
+                                echo -e "${gl_hong}❌ 证书申请失败${gl_bai}"
+                                echo ""
+                                echo "可能的原因："
+                                echo "  1. 域名未解析到本服务器"
+                                echo "  2. 域名开启了 Cloudflare 代理（橙云）"
+                                echo "  3. 80 端口被防火墙拦截"
+                                echo "  4. 域名解析未生效"
+                                echo ""
+                                echo "解决方案："
+                                echo "  - 方案1：关闭 Cloudflare 代理（改为灰云）后重试"
+                                echo "  - 方案2：使用 Cloudflare Origin Certificate（15年有效期）"
+                                echo "  - 方案3：使用 Cloudflare Tunnel（无需证书和域名解析）"
+                                echo ""
+                                echo "查看详细日志："
+                                echo "  cat /var/log/letsencrypt/letsencrypt.log"
+                                echo "  或: certbot certificates"
+                                echo ""
+                                
+                                # 修复4：询问是否恢复被停止的服务
+                                if [ -n "$stopped_service" ]; then
+                                    echo ""
+                                    read -e -p "是否恢复 $stopped_service 服务？(Y/N): " restore_service
+                                    case "$restore_service" in
+                                        [Yy])
+                                            systemctl start "$stopped_service"
+                                            if [ $? -eq 0 ]; then
+                                                echo -e "${gl_lv}✅ 已恢复 $stopped_service${gl_bai}"
+                                            else
+                                                echo -e "${gl_huang}⚠️  恢复 $stopped_service 失败${gl_bai}"
+                                            fi
+                                            ;;
+                                    esac
+                                    echo ""
+                                fi
+                                
+                                read -e -p "是否改用 HTTP 模式（不加密）？(Y/N): " use_http
+                                case "$use_http" in
+                                    [Yy])
+                                        use_ssl=false
+                                        echo -e "${gl_huang}⚠️  将使用 HTTP 模式（不安全）${gl_bai}"
+                                        ;;
+                                    *)
+                                        echo "已取消配置"
+                                        break_end
+                                        return 1
+                                        ;;
+                                esac
                             fi
                         fi
                         ;;
-                    *)
-                        ssl_cert_path="/etc/letsencrypt/live/$domain/fullchain.pem"
-                        ssl_key_path="/etc/letsencrypt/live/$domain/privkey.pem"
-                        ;;
-                esac
+                        *)
+                            ssl_cert_path="/etc/letsencrypt/live/$domain/fullchain.pem"
+                            ssl_key_path="/etc/letsencrypt/live/$domain/privkey.pem"
+                            ;;
+                    esac
+                fi
             else
                 ssl_cert_path="/etc/letsencrypt/live/$domain/fullchain.pem"
                 ssl_key_path="/etc/letsencrypt/live/$domain/privkey.pem"
@@ -4826,6 +5013,35 @@ configure_nginx_proxy() {
     
     echo ""
     echo -e "${gl_zi}[步骤 3/4] 生成 Nginx 配置${gl_bai}"
+    echo ""
+    
+    # 修复3：生成配置前验证证书文件
+    if [ "$use_ssl" = true ]; then
+        if [ ! -f "$ssl_cert_path" ] || [ ! -f "$ssl_key_path" ]; then
+            echo -e "${gl_hong}❌ 证书文件不存在${gl_bai}"
+            echo "  证书: $ssl_cert_path"
+            echo "  私钥: $ssl_key_path"
+            echo ""
+            echo -e "${gl_huang}将生成 HTTP 配置（不加密）${gl_bai}"
+            echo ""
+            
+            read -e -p "是否继续生成 HTTP 配置？(Y/N): " continue_http
+            case "$continue_http" in
+                [Yy])
+                    use_ssl=false
+                    echo -e "${gl_huang}⚠️  将使用 HTTP 模式${gl_bai}"
+                    ;;
+                *)
+                    echo "已取消配置"
+                    break_end
+                    return 1
+                    ;;
+            esac
+        else
+            echo -e "${gl_lv}✅ 证书文件验证通过${gl_bai}"
+        fi
+    fi
+    
     echo ""
     
     # 生成最终配置文件
@@ -4926,6 +5142,19 @@ NGINXEOF
     if nginx -t >/dev/null 2>&1; then
         echo -e "${gl_lv}✅ 配置测试通过${gl_bai}"
         
+        # 检查 Nginx 是否运行，如果没运行则启动
+        if ! systemctl is-active --quiet nginx; then
+            echo "正在启动 Nginx..."
+            systemctl start nginx
+            if [ $? -eq 0 ]; then
+                echo -e "${gl_lv}✅ Nginx 启动成功${gl_bai}"
+            else
+                echo -e "${gl_hong}❌ Nginx 启动失败${gl_bai}"
+                break_end
+                return 1
+            fi
+        fi
+        
         # 重载 Nginx
         echo "正在重载 Nginx..."
         systemctl reload nginx
@@ -4947,14 +5176,28 @@ NGINXEOF
             echo ""
         else
             echo -e "${gl_hong}❌ Nginx 重载失败${gl_bai}"
-            echo "请检查配置: nginx -t"
+            echo ""
+            # 修复5：增加详细的错误日志提示
+            echo "查看详细错误："
+            echo "  nginx -t"
+            echo "  systemctl status nginx"
+            echo "  tail -50 /var/log/nginx/error.log"
+            echo ""
         fi
     else
         echo -e "${gl_hong}❌ 配置测试失败${gl_bai}"
         echo ""
         nginx -t
         echo ""
-        echo "请手动修复配置文件: $final_nginx_conf"
+        # 修复5：增加详细的错误日志提示
+        echo "查看配置错误："
+        echo "  nginx -t"
+        echo "  tail -50 /var/log/nginx/error.log"
+        echo ""
+        echo "手动修复配置文件："
+        echo "  vim $final_nginx_conf"
+        echo "  或: nano $final_nginx_conf"
+        echo ""
     fi
     
     break_end
