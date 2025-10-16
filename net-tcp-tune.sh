@@ -4307,7 +4307,7 @@ services:
       SUB_STORE_BACKEND_API_PORT: $api_port
       SUB_STORE_BACKEND_MERGE: true
       SUB_STORE_FRONTEND_BACKEND_PATH: /$access_path
-      HOST: 127.0.0.1
+s      HOST: 127.0.0.1
     volumes:
       - $data_dir:/opt/app/data
 EOF
@@ -4330,70 +4330,7 @@ EOF
         echo ""
         echo -e "${gl_huang}⚠️  重要提示：${gl_bai}"
         echo "  此实例仅监听本地 127.0.0.1，无法直接通过IP访问！"
-        echo "  必须配置反向代理后才能使用。"
-        echo ""
-        
-        # 生成 Nginx 配置
-        local nginx_conf="/root/sub-store-nginx-$instance_num.conf"
-        cat > "$nginx_conf" << 'NGINXEOF'
-# Sub-Store Nginx 反向代理配置
-# 使用说明：
-#   1. 修改 server_name 为你的域名
-#   2. 配置 SSL 证书路径
-#   3. 复制到 /etc/nginx/conf.d/ 或 /etc/nginx/sites-enabled/
-#   4. 执行: nginx -t && systemctl reload nginx
-
-server {
-    listen 443 ssl http2;
-    server_name sub.你的域名.com;  # 修改为你的域名
-    
-    # SSL 证书配置（Cloudflare 或 Let's Encrypt）
-    ssl_certificate /path/to/cert.pem;      # 修改证书路径
-    ssl_certificate_key /path/to/key.pem;   # 修改密钥路径
-    
-    ssl_protocols TLSv1.2 TLSv1.3;
-    ssl_ciphers HIGH:!aNULL:!MD5;
-    ssl_prefer_server_ciphers on;
-    
-    # 前端页面（HTTP-META）和后端 API（共用端口）
-    location / {
-        proxy_pass http://127.0.0.1:API_PORT_PLACEHOLDER;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-        
-        # WebSocket 支持
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection "upgrade";
-    }
-}
-
-# HTTP 重定向到 HTTPS（可选）
-server {
-    listen 80;
-    server_name sub.你的域名.com;  # 修改为你的域名
-    return 301 https://$server_name$request_uri;
-}
-NGINXEOF
-        
-        # 替换占位符
-        sed -i "s/API_PORT_PLACEHOLDER/$api_port/g" "$nginx_conf"
-        sed -i "s|ACCESS_PATH_PLACEHOLDER|$access_path|g" "$nginx_conf"
-        
-        echo -e "${gl_kjlan}【方法1】Nginx 反向代理（推荐）${gl_bai}"
-        echo ""
-        echo "  配置文件已生成: $nginx_conf"
-        echo ""
-        echo "  使用步骤："
-        echo "    1. 修改配置中的域名"
-        echo "    2. 配置 SSL 证书路径"
-        echo "    3. 复制到 Nginx: cp $nginx_conf /etc/nginx/conf.d/"
-        echo "    4. 测试并重载: nginx -t && systemctl reload nginx"
-        echo ""
-        echo "  配置完成后访问："
-        echo -e "    ${gl_lv}https://sub.你的域名.com?api=https://sub.你的域名.com/$access_path${gl_bai}"
+        echo "  必须配置 Cloudflare Tunnel 后才能使用。"
         echo ""
         
         # 生成 Cloudflare Tunnel 配置
@@ -4427,19 +4364,11 @@ ingress:
   - service: http_status:404
 CFEOF
         
-        echo -e "${gl_kjlan}【方法2】Cloudflare Tunnel（无需开端口）${gl_bai}"
+        echo -e "${gl_kjlan}【Cloudflare Tunnel 配置文件】${gl_bai}"
         echo ""
-        echo "  配置文件已生成: $cf_tunnel_conf"
+        echo "  配置模板已生成: $cf_tunnel_conf"
         echo ""
-        echo "  使用步骤："
-        echo "    1. 安装 cloudflared 工具"
-        echo "    2. 登录并创建隧道"
-        echo "    3. 修改配置中的 tunnel ID 和凭证路径"
-        echo "    4. 配置 DNS 路由"
-        echo "    5. 启动: cloudflared tunnel --config $cf_tunnel_conf run"
-        echo ""
-        echo "  配置完成后访问："
-        echo -e "    ${gl_lv}https://sub.你的域名.com?api=https://sub.你的域名.com/$access_path${gl_bai}"
+        echo "  接下来将引导你进行自动配置"
         echo ""
         
         echo -e "${gl_zi}常用命令：${gl_bai}"
@@ -4450,32 +4379,26 @@ CFEOF
         
         # 交互式配置向导
         echo -e "${gl_kjlan}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${gl_bai}"
-        echo -e "${gl_huang}📌 接下来需要配置反向代理才能使用${gl_bai}"
+        echo -e "${gl_huang}📌 接下来需要配置 Cloudflare Tunnel 才能使用${gl_bai}"
         echo -e "${gl_kjlan}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${gl_bai}"
         echo ""
-        echo "请选择配置方式："
-        echo "1. 配置 Nginx 反向代理（推荐，高性能）"
-        echo "2. 配置 Cloudflare Tunnel（无需开端口）"
-        echo "3. 跳过配置（稍后手动配置）"
+        echo "请选择："
+        echo "1. 立即配置 Cloudflare Tunnel（推荐）"
+        echo "2. 跳过配置（稍后手动配置）"
         echo ""
         
         local proxy_choice
-        read -e -p "请选择 [1-3]: " proxy_choice
+        read -e -p "请选择 [1-2]: " proxy_choice
         
         case "$proxy_choice" in
             1)
-                # Nginx 配置向导
-                configure_nginx_proxy "$instance_num" "$http_port" "$api_port" "$access_path" "$nginx_conf"
-                ;;
-            2)
                 # Cloudflare Tunnel 配置向导
                 configure_cf_tunnel "$instance_num" "$http_port" "$api_port" "$access_path" "$cf_tunnel_conf"
                 ;;
-            3)
+            2)
                 echo ""
                 echo -e "${gl_huang}已跳过配置${gl_bai}"
                 echo "稍后可手动配置，配置文件位于："
-                echo "  - Nginx: $nginx_conf"
                 echo "  - CF Tunnel: $cf_tunnel_conf"
                 echo ""
                 ;;
@@ -4493,8 +4416,8 @@ CFEOF
     break_end
 }
 
-# Nginx 反向代理配置向导
-configure_nginx_proxy() {
+# Cloudflare Tunnel 配置向导
+configure_cf_tunnel() {
     local instance_num=$1
     local http_port=$2
     local api_port=$3
