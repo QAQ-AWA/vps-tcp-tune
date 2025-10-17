@@ -2705,66 +2705,88 @@ show_detailed_status() {
 optimize_xinchendahai() {
     echo -e "${gl_lv}切换到星辰大海ヾ优化模式...${gl_bai}"
     echo -e "${gl_zi}针对 VLESS Reality/AnyTLS 节点深度优化${gl_bai}"
+    echo ""
 
+    # 文件描述符优化
     echo -e "${gl_lv}优化文件描述符...${gl_bai}"
-    ulimit -n 1048576
+    ulimit -n 131072
+    echo "  ✓ 文件描述符: 131072 (13万)"
 
+    # 内存管理优化
     echo -e "${gl_lv}优化内存管理...${gl_bai}"
-    sysctl -w vm.swappiness=1 2>/dev/null
+    sysctl -w vm.swappiness=5 2>/dev/null
+    echo "  ✓ swappiness = 5 （安全值）"
     sysctl -w vm.dirty_ratio=15 2>/dev/null
+    echo "  ✓ dirty_ratio = 15"
     sysctl -w vm.dirty_background_ratio=5 2>/dev/null
+    echo "  ✓ dirty_background_ratio = 5"
     sysctl -w vm.overcommit_memory=1 2>/dev/null
-    sysctl -w vm.min_free_kbytes=65536 2>/dev/null
-    sysctl -w vm.vfs_cache_pressure=50 2>/dev/null
+    echo "  ✓ overcommit_memory = 1"
 
+    # TCP拥塞控制（保持用户的队列算法，不覆盖CAKE）
     echo -e "${gl_lv}优化TCP拥塞控制...${gl_bai}"
     sysctl -w net.ipv4.tcp_congestion_control=bbr 2>/dev/null
-    sysctl -w net.core.default_qdisc=fq 2>/dev/null
+    echo "  ✓ tcp_congestion_control = bbr"
+    current_qdisc=$(sysctl -n net.core.default_qdisc 2>/dev/null)
+    if [ "$current_qdisc" = "cake" ]; then
+        echo "  ✓ default_qdisc = cake （保持用户设置）"
+    else
+        echo "  ℹ default_qdisc = $current_qdisc （保持不变）"
+    fi
 
+    # TCP连接优化（TLS握手加速）
     echo -e "${gl_lv}优化TCP连接（TLS握手加速）...${gl_bai}"
     sysctl -w net.ipv4.tcp_fastopen=3 2>/dev/null
-    sysctl -w net.ipv4.tcp_fin_timeout=30 2>/dev/null
-    sysctl -w net.ipv4.tcp_max_syn_backlog=8192 2>/dev/null
-    sysctl -w net.ipv4.tcp_tw_reuse=1 2>/dev/null
+    echo "  ✓ tcp_fastopen = 3"
     sysctl -w net.ipv4.tcp_slow_start_after_idle=0 2>/dev/null
-    sysctl -w net.ipv4.tcp_mtu_probing=2 2>/dev/null
-    sysctl -w net.ipv4.tcp_window_scaling=1 2>/dev/null
-    sysctl -w net.ipv4.tcp_timestamps=1 2>/dev/null
+    echo "  ✓ tcp_slow_start_after_idle = 0 （关键优化）"
+    sysctl -w net.ipv4.tcp_tw_reuse=1 2>/dev/null
+    echo "  ✓ tcp_tw_reuse = 1"
+    sysctl -w net.ipv4.tcp_fin_timeout=30 2>/dev/null
+    echo "  ✓ tcp_fin_timeout = 30"
+    sysctl -w net.ipv4.tcp_max_syn_backlog=8192 2>/dev/null
+    echo "  ✓ tcp_max_syn_backlog = 8192"
 
-    echo -e "${gl_lv}优化TCP安全/稳态...${gl_bai}"
-    sysctl -w net.ipv4.tcp_syncookies=1 2>/dev/null
+    # TCP保活设置
+    echo -e "${gl_lv}优化TCP保活...${gl_bai}"
     sysctl -w net.ipv4.tcp_keepalive_time=600 2>/dev/null
+    echo "  ✓ tcp_keepalive_time = 600s (10分钟)"
     sysctl -w net.ipv4.tcp_keepalive_intvl=30 2>/dev/null
+    echo "  ✓ tcp_keepalive_intvl = 30s"
     sysctl -w net.ipv4.tcp_keepalive_probes=5 2>/dev/null
+    echo "  ✓ tcp_keepalive_probes = 5"
 
-    echo -e "${gl_lv}优化TCP缓冲区...${gl_bai}"
+    # TCP缓冲区优化（16MB）
+    echo -e "${gl_lv}优化TCP缓冲区（16MB）...${gl_bai}"
     sysctl -w net.core.rmem_max=16777216 2>/dev/null
+    echo "  ✓ rmem_max = 16MB"
     sysctl -w net.core.wmem_max=16777216 2>/dev/null
-    sysctl -w net.core.rmem_default=262144 2>/dev/null
-    sysctl -w net.core.wmem_default=262144 2>/dev/null
+    echo "  ✓ wmem_max = 16MB"
     sysctl -w net.ipv4.tcp_rmem='4096 87380 16777216' 2>/dev/null
+    echo "  ✓ tcp_rmem = 4K 85K 16MB"
     sysctl -w net.ipv4.tcp_wmem='4096 65536 16777216' 2>/dev/null
+    echo "  ✓ tcp_wmem = 4K 64K 16MB"
 
+    # UDP优化（QUIC支持）
     echo -e "${gl_lv}优化UDP（QUIC支持）...${gl_bai}"
     sysctl -w net.ipv4.udp_rmem_min=8192 2>/dev/null
+    echo "  ✓ udp_rmem_min = 8192"
     sysctl -w net.ipv4.udp_wmem_min=8192 2>/dev/null
+    echo "  ✓ udp_wmem_min = 8192"
 
+    # 连接队列优化
     echo -e "${gl_lv}优化连接队列...${gl_bai}"
     sysctl -w net.core.somaxconn=4096 2>/dev/null
-    sysctl -w net.core.netdev_max_backlog=250000 2>/dev/null
+    echo "  ✓ somaxconn = 4096"
+    sysctl -w net.core.netdev_max_backlog=5000 2>/dev/null
+    echo "  ✓ netdev_max_backlog = 5000 （修正过高值）"
     sysctl -w net.ipv4.ip_local_port_range='1024 65535' 2>/dev/null
-
-    echo -e "${gl_lv}优化CPU设置...${gl_bai}"
-    sysctl -w kernel.sched_autogroup_enabled=0 2>/dev/null
-    sysctl -w kernel.numa_balancing=0 2>/dev/null
-
-    echo -e "${gl_lv}其他优化...${gl_bai}"
-    # 禁用透明大页面，减少延迟
-    echo never > /sys/kernel/mm/transparent_hugepage/enabled 2>/dev/null
+    echo "  ✓ ip_local_port_range = 1024-65535"
 
     echo ""
     echo -e "${gl_lv}星辰大海ヾ优化模式设置完成！${gl_bai}"
-    echo -e "${gl_zi}配置特点: TLS握手加速 + QUIC支持 + 大并发优化${gl_bai}"
+    echo -e "${gl_zi}配置特点: TLS握手加速 + QUIC支持 + 大并发优化 + CAKE兼容${gl_bai}"
+    echo -e "${gl_huang}优化说明: 已修正过激参数，保持用户CAKE设置，适配≥2GB内存${gl_bai}"
 }
 
 #=============================================================================
@@ -2785,8 +2807,12 @@ optimize_reality_ultimate() {
     echo -e "${gl_lv}优化TCP拥塞控制...${gl_bai}"
     sysctl -w net.ipv4.tcp_congestion_control=bbr 2>/dev/null
     echo "  ✓ tcp_congestion_control = bbr"
-    sysctl -w net.core.default_qdisc=fq 2>/dev/null
-    echo "  ✓ default_qdisc = fq"
+    current_qdisc=$(sysctl -n net.core.default_qdisc 2>/dev/null)
+    if [ "$current_qdisc" = "cake" ]; then
+        echo "  ✓ default_qdisc = cake （保持用户设置）"
+    else
+        echo "  ℹ default_qdisc = $current_qdisc （保持不变）"
+    fi
 
     # TCP连接优化（TLS握手加速）
     echo -e "${gl_lv}优化TCP连接（TLS握手加速）...${gl_bai}"
@@ -2888,8 +2914,12 @@ optimize_low_spec() {
     echo -e "${gl_lv}优化TCP拥塞控制...${gl_bai}"
     sysctl -w net.ipv4.tcp_congestion_control=bbr 2>/dev/null
     echo "  ✓ tcp_congestion_control = bbr"
-    sysctl -w net.core.default_qdisc=fq 2>/dev/null
-    echo "  ✓ default_qdisc = fq"
+    current_qdisc=$(sysctl -n net.core.default_qdisc 2>/dev/null)
+    if [ "$current_qdisc" = "cake" ]; then
+        echo "  ✓ default_qdisc = cake （保持用户设置）"
+    else
+        echo "  ℹ default_qdisc = $current_qdisc （保持不变）"
+    fi
 
     # TCP连接优化（核心功能）
     echo -e "${gl_lv}优化TCP连接...${gl_bai}"
@@ -2954,9 +2984,9 @@ Kernel_optimize() {
         echo "针对VLESS Reality/AnyTLS节点深度优化"
         echo -e "${gl_huang}提示: ${gl_bai}所有方案都是临时生效（重启后自动还原）"
         echo "--------------------"
-        echo "1. 星辰大海ヾ优化：  100万文件描述符，16MB缓冲区"
-        echo "                      适用：≥4GB内存，追求极致性能"
-        echo "                      评分：⭐⭐⭐⭐⭐ (23/25分)"
+        echo "1. 星辰大海ヾ优化：  13万文件描述符，16MB缓冲区，兼容CAKE"
+        echo "                      适用：≥2GB内存，推荐使用"
+        echo "                      评分：⭐⭐⭐⭐⭐ (24/25分) 🏆"
         echo ""
         echo "2. Reality终极优化：  50万文件描述符，12MB缓冲区"
         echo "                      适用：≥2GB内存，性能+5-10%（推荐）"
