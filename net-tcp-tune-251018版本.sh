@@ -1911,8 +1911,8 @@ detect_bandwidth() {
                 fi
             fi
             
-            # 运行speedtest并捕获输出
-            local speedtest_output=$(speedtest 2>&1)
+            # 运行speedtest并捕获输出（自动接受许可协议）
+            local speedtest_output=$(speedtest --accept-license --accept-gdpr 2>&1)
             echo "$speedtest_output" >&2
             echo "" >&2
             echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" >&2
@@ -2714,6 +2714,7 @@ show_detailed_status() {
     break_end
 }
 
+
 #=============================================================================
 # 内核参数优化 - 星辰大海ヾ优化模式（VLESS Reality/AnyTLS专用）
 #=============================================================================
@@ -2813,128 +2814,6 @@ optimize_xinchendahai() {
     echo "  ✓ netdev_max_backlog = 5000 （修正过高值）"
     sysctl -w net.ipv4.ip_local_port_range='1024 65535' 2>/dev/null
     echo "  ✓ ip_local_port_range = 1024-65535"
-
-    echo ""
-    echo -e "${gl_lv}星辰大海ヾ优化模式设置完成！${gl_bai}"
-    echo -e "${gl_zi}配置特点: TLS握手加速 + QUIC支持 + 大并发优化 + CAKE兼容${gl_bai}"
-    echo -e "${gl_huang}优化说明: 已修正过激参数，保持用户CAKE设置，适配≥2GB内存${gl_bai}"
-}
-
-#=============================================================================
-# 内核参数优化 - Reality终极优化（方案E）
-#=============================================================================
-
-optimize_reality_ultimate() {
-    echo -e "${gl_lv}切换到Reality终极优化模式...${gl_bai}"
-    echo -e "${gl_zi}基于星辰大海深度改进，性能提升5-10%，资源消耗降低25%${gl_bai}"
-    echo ""
-    echo -e "${gl_hong}⚠️  重要提示 ⚠️${gl_bai}"
-    echo -e "${gl_huang}本配置为临时生效（使用 sysctl -w 命令）${gl_bai}"
-    echo -e "${gl_huang}重启后将恢复到永久配置文件的设置${gl_bai}"
-    echo ""
-    echo "如果你之前执行过："
-    echo "  - CAKE调优 / Debian12调优 / BBR直连优化"
-    echo "重启后会恢复到那些配置，本次优化会消失！"
-    echo ""
-    read -e -p "是否继续？(Y/N) [Y]: " confirm
-    confirm=${confirm:-Y}
-    if [[ "$confirm" =~ ^[Nn]$ ]]; then
-        echo "已取消"
-        return
-    fi
-    echo ""
-
-    # 文件描述符优化
-    echo -e "${gl_lv}优化文件描述符...${gl_bai}"
-    ulimit -n 524288
-    echo "  ✓ 文件描述符: 524288 (50万)"
-
-    # TCP拥塞控制（核心）
-    echo -e "${gl_lv}优化TCP拥塞控制...${gl_bai}"
-    sysctl -w net.ipv4.tcp_congestion_control=bbr 2>/dev/null
-    echo "  ✓ tcp_congestion_control = bbr"
-    current_qdisc=$(sysctl -n net.core.default_qdisc 2>/dev/null)
-    if [ "$current_qdisc" = "cake" ]; then
-        echo "  ✓ default_qdisc = cake （保持用户设置）"
-    else
-        echo "  ℹ default_qdisc = $current_qdisc （保持不变）"
-    fi
-
-    # TCP连接优化（TLS握手加速）
-    echo -e "${gl_lv}优化TCP连接（TLS握手加速）...${gl_bai}"
-    sysctl -w net.ipv4.tcp_fastopen=3 2>/dev/null
-    echo "  ✓ tcp_fastopen = 3"
-    sysctl -w net.ipv4.tcp_slow_start_after_idle=0 2>/dev/null
-    echo "  ✓ tcp_slow_start_after_idle = 0 （关键优化）"
-    sysctl -w net.ipv4.tcp_tw_reuse=1 2>/dev/null
-    echo "  ✓ tcp_tw_reuse = 1"
-    sysctl -w net.ipv4.ip_local_port_range='1024 65535' 2>/dev/null
-    echo "  ✓ ip_local_port_range = 1024-65535"
-
-    # Reality特有优化（方案E核心亮点）
-    echo -e "${gl_lv}Reality特有优化...${gl_bai}"
-    sysctl -w net.ipv4.tcp_notsent_lowat=16384 2>/dev/null
-    echo "  ✓ tcp_notsent_lowat = 16384 （减少延迟）"
-    sysctl -w net.ipv4.tcp_fin_timeout=15 2>/dev/null
-    echo "  ✓ tcp_fin_timeout = 15 （快速回收）"
-    sysctl -w net.ipv4.tcp_max_tw_buckets=5000 2>/dev/null
-    echo "  ✓ tcp_max_tw_buckets = 5000"
-
-    # TCP缓冲区（12MB平衡配置）
-    echo -e "${gl_lv}优化TCP缓冲区（12MB）...${gl_bai}"
-    sysctl -w net.core.rmem_max=12582912 2>/dev/null
-    echo "  ✓ rmem_max = 12MB"
-    sysctl -w net.core.wmem_max=12582912 2>/dev/null
-    echo "  ✓ wmem_max = 12MB"
-    sysctl -w net.ipv4.tcp_rmem='4096 87380 12582912' 2>/dev/null
-    echo "  ✓ tcp_rmem = 4K 85K 12MB"
-    sysctl -w net.ipv4.tcp_wmem='4096 65536 12582912' 2>/dev/null
-    echo "  ✓ tcp_wmem = 4K 64K 12MB"
-
-    # 内存管理
-    echo -e "${gl_lv}优化内存管理...${gl_bai}"
-    sysctl -w vm.swappiness=5 2>/dev/null
-    echo "  ✓ swappiness = 5"
-    sysctl -w vm.dirty_ratio=15 2>/dev/null
-    echo "  ✓ dirty_ratio = 15"
-    sysctl -w vm.dirty_background_ratio=5 2>/dev/null
-    echo "  ✓ dirty_background_ratio = 5"
-    sysctl -w vm.overcommit_memory=1 2>/dev/null
-    echo "  ✓ overcommit_memory = 1"
-    sysctl -w vm.vfs_cache_pressure=50 2>/dev/null
-    echo "  ✓ vfs_cache_pressure = 50"
-
-    # 连接保活（更短的检测周期）
-    echo -e "${gl_lv}优化连接保活...${gl_bai}"
-    sysctl -w net.ipv4.tcp_keepalive_time=300 2>/dev/null
-    echo "  ✓ tcp_keepalive_time = 300s (5分钟)"
-    sysctl -w net.ipv4.tcp_keepalive_intvl=30 2>/dev/null
-    echo "  ✓ tcp_keepalive_intvl = 30s"
-    sysctl -w net.ipv4.tcp_keepalive_probes=5 2>/dev/null
-    echo "  ✓ tcp_keepalive_probes = 5"
-
-    # UDP/QUIC优化
-    echo -e "${gl_lv}优化UDP（QUIC支持）...${gl_bai}"
-    sysctl -w net.ipv4.udp_rmem_min=8192 2>/dev/null
-    echo "  ✓ udp_rmem_min = 8192"
-    sysctl -w net.ipv4.udp_wmem_min=8192 2>/dev/null
-    echo "  ✓ udp_wmem_min = 8192"
-
-    # 连接队列优化（科学配置）
-    echo -e "${gl_lv}优化连接队列...${gl_bai}"
-    sysctl -w net.core.somaxconn=4096 2>/dev/null
-    echo "  ✓ somaxconn = 4096"
-    sysctl -w net.ipv4.tcp_max_syn_backlog=8192 2>/dev/null
-    echo "  ✓ tcp_max_syn_backlog = 8192"
-    sysctl -w net.core.netdev_max_backlog=5000 2>/dev/null
-    echo "  ✓ netdev_max_backlog = 5000 （科学值）"
-
-    # TCP安全
-    echo -e "${gl_lv}TCP安全增强...${gl_bai}"
-    sysctl -w net.ipv4.tcp_syncookies=1 2>/dev/null
-    echo "  ✓ tcp_syncookies = 1"
-    sysctl -w net.ipv4.tcp_mtu_probing=1 2>/dev/null
-    echo "  ✓ tcp_mtu_probing = 1"
 
     echo ""
     echo -e "${gl_lv}星辰大海ヾ优化模式设置完成！${gl_bai}"
@@ -3603,13 +3482,14 @@ show_main_menu() {
         echo "3. NS论坛CAKE调优"
         echo "4. 科技lion高性能模式内核参数优化"
         echo "5. BBR 直连/落地优化（智能带宽检测）"
+        echo "6. Debian12 调优（智能BDP计算+内存保护）"
         echo ""
         echo -e "${gl_kjlan}[系统设置]${gl_bai}"
-        echo "6. 虚拟内存管理"
-        echo "7. IPv6管理（临时/永久禁用/取消）"
-        echo "8. 设置临时SOCKS5代理"
-        echo "9. 设置IPv4/IPv6优先级"
-        echo "10. IPv4/IPv6连接检测"
+        echo "7. 虚拟内存管理"
+        echo "8. IPv6管理（临时/永久禁用/取消）"
+        echo "9. 设置临时SOCKS5代理"
+        echo "10. 设置IPv4/IPv6优先级"
+        echo "11. IPv4/IPv6连接检测"
         echo ""
         echo -e "${gl_kjlan}[Xray配置]${gl_bai}"
         echo "12. Realm转发连接分析"
@@ -3648,13 +3528,14 @@ show_main_menu() {
         echo "2. NS论坛CAKE调优"
         echo "3. 科技lion高性能模式内核参数优化"
         echo "4. BBR 直连/落地优化（智能带宽检测）"
+        echo "5. Debian12 调优（智能BDP计算+内存保护）"
         echo ""
         echo -e "${gl_kjlan}[系统设置]${gl_bai}"
-        echo "5. 虚拟内存管理"
-        echo "6. IPv6管理（临时/永久禁用/取消）"
-        echo "7. 设置临时SOCKS5代理"
-        echo "8. 设置IPv4/IPv6优先级"
-        echo "9. IPv4/IPv6连接检测"
+        echo "6. 虚拟内存管理"
+        echo "7. IPv6管理（临时/永久禁用/取消）"
+        echo "8. 设置临时SOCKS5代理"
+        echo "9. 设置IPv4/IPv6优先级"
+        echo "10. IPv4/IPv6连接检测"
         echo ""
         echo -e "${gl_kjlan}[Xray配置]${gl_bai}"
         echo "11. Realm转发连接分析"
@@ -3735,73 +3616,80 @@ show_main_menu() {
                 bbr_configure_direct
                 break_end
             else
-                manage_swap
+                debian12_tune
             fi
             ;;
         6)
+            if [ $is_installed -eq 0 ]; then
+                debian12_tune
+            else
+                manage_swap
+            fi
+            ;;
+        7)
             if [ $is_installed -eq 0 ]; then
                 manage_swap
             else
                 manage_ipv6
             fi
             ;;
-        7)
+        8)
             if [ $is_installed -eq 0 ]; then
                 manage_ipv6
             else
                 set_temp_socks5_proxy
             fi
             ;;
-        8)
+        9)
             if [ $is_installed -eq 0 ]; then
                 set_temp_socks5_proxy
             else
                 manage_ip_priority
             fi
             ;;
-        9)
+        10)
             if [ $is_installed -eq 0 ]; then
                 manage_ip_priority
             else
                 check_ipv4v6_connections
             fi
             ;;
-        10)
+        11)
             if [ $is_installed -eq 0 ]; then
                 check_ipv4v6_connections
             else
                 analyze_realm_connections
             fi
             ;;
-        11)
+        12)
             if [ $is_installed -eq 0 ]; then
                 analyze_realm_connections
             else
                 show_xray_config
             fi
             ;;
-        12)
+        13)
             if [ $is_installed -eq 0 ]; then
                 show_xray_config
             else
                 set_xray_ipv6_outbound
             fi
             ;;
-        13)
+        14)
             if [ $is_installed -eq 0 ]; then
                 set_xray_ipv6_outbound
             else
                 restore_xray_default
             fi
             ;;
-        14)
+        15)
             if [ $is_installed -eq 0 ]; then
                 restore_xray_default
             else
                 show_detailed_status
             fi
             ;;
-        15)
+        16)
             if [ $is_installed -eq 0 ]; then
                 show_detailed_status
             else
@@ -4221,9 +4109,9 @@ run_fscarmen_singbox() {
 
 #卸载bbr+锐速
 remove_bbr_lotserver() {
-  sed -i '/net.ipv4.tcp_ecn/d' /etc/sysctl.d/99-sysctl.conf
-  sed -i '/net.core.default_qdisc/d' /etc/sysctl.d/99-sysctl.conf
-  sed -i '/net.ipv4.tcp_congestion_control/d' /etc/sysctl.d/99-sysctl.conf
+  sed -i '/net.ipv4.tcp_ecn/d' /etc/sysctl.d/99-bbr-ultimate.conf 2>/dev/null
+  sed -i '/net.core.default_qdisc/d' /etc/sysctl.d/99-bbr-ultimate.conf 2>/dev/null
+  sed -i '/net.ipv4.tcp_congestion_control/d' /etc/sysctl.d/99-bbr-ultimate.conf 2>/dev/null
   sed -i '/net.ipv4.tcp_ecn/d' /etc/sysctl.conf
   sed -i '/net.core.default_qdisc/d' /etc/sysctl.conf
   sed -i '/net.ipv4.tcp_congestion_control/d' /etc/sysctl.conf
@@ -4240,11 +4128,158 @@ remove_bbr_lotserver() {
 #启用BBR+cake
 startbbrcake() {
   remove_bbr_lotserver
-  echo "net.core.default_qdisc=cake" >>/etc/sysctl.d/99-sysctl.conf
-  echo "net.ipv4.tcp_congestion_control=bbr" >>/etc/sysctl.d/99-sysctl.conf
+  
+  # 清理旧配置文件
+  rm -f /etc/sysctl.d/99-sysctl.conf
+  rm -f /etc/sysctl.d/999-net-bbr-fq.conf
+  
+  # 清理主配置文件冲突
+  clean_sysctl_conf
+  
+  # 写入新配置（覆盖模式）
+  cat > /etc/sysctl.d/99-bbr-ultimate.conf <<EOF
+net.core.default_qdisc=cake
+net.ipv4.tcp_congestion_control=bbr
+EOF
+  
   sysctl --system
   echo -e "${gl_lv}[信息]${gl_bai}BBR+cake修改成功，重启生效！"
   break_end
+}
+
+# Debian12 智能调优
+debian12_tune() {
+    clear
+    echo -e "${gl_kjlan}=== Debian12 智能 BBR/FQ 调优 ===${gl_bai}"
+    echo ""
+    
+    # 颜色输出函数
+    echo_info() { echo -e "${gl_lv}[INFO]${gl_bai} $*"; }
+    echo_warn() { echo -e "${gl_huang}[WARN]${gl_bai} $*"; }
+    echo_error() { echo -e "${gl_hong}[ERROR]${gl_bai} $*"; }
+    
+    backup_conflict_file() {
+        local file="$1"
+        if [[ -f "$file" ]]; then
+            local timestamp
+            timestamp=$(date +%Y%m%d%H%M%S)
+            mv "$file" "${file}.bak.${timestamp}"
+            echo_info "已备份: $file"
+        fi
+    }
+    
+    # 检测内存
+    total_mem=$(free -m | awk '/Mem:/ {print $2}')
+    echo_info "系统内存: ${total_mem} MB"
+    
+    if [[ $total_mem -lt 512 ]]; then
+        echo_error "内存小于 512MB,不建议调优"
+        break_end
+        return 1
+    elif [[ $total_mem -lt 1024 ]]; then
+        echo_warn "内存小于 1GB,将使用保守配置"
+    fi
+    
+    # 检测网卡
+    default_iface=$(ip route show default | awk '{print $5}' | head -n1)
+    if [[ -z "$default_iface" ]]; then
+        echo_error "无法检测默认网卡"
+        break_end
+        return 1
+    fi
+    echo_info "默认网卡: $default_iface"
+    
+    # 检测 RTT(使用公网 DNS - 多个备选)
+    echo_info "检测网络延迟..."
+    rtt=""
+    
+    # 尝试多个公网 IP（按优先级）
+    for target_ip in 8.8.8.8 1.1.1.1 114.114.114.114 223.5.5.5; do
+        if ping -c 1 -W 2 "$target_ip" >/dev/null 2>&1; then
+            # 尝试多种 awk 解析方式（兼容不同 ping 输出格式）
+            rtt=$(ping -c 3 -q "$target_ip" 2>/dev/null | awk -F'[=/]' '/rtt|round-trip/ {for(i=1;i<=NF;i++) if($i~/^[0-9.]+$/ && $i>0) {print int($i); exit}}')
+            
+            if [[ -n "$rtt" && $rtt -gt 0 ]]; then
+                echo_info "检测到 RTT: ${rtt} ms (目标: $target_ip)"
+                break
+            fi
+        fi
+    done
+    
+    # 如果所有方式都失败，使用默认值
+    if [[ -z "$rtt" || $rtt -eq 0 ]]; then
+        rtt=50
+        echo_warn "无法检测 RTT (可能防火墙阻止 ICMP 或网络不通)"
+        echo_warn "使用默认值: ${rtt} ms"
+        echo_warn "提示: 可手动修改脚本第4202行的 rtt 值"
+    fi
+    
+    # 带宽设置(建议改为交互式或配置文件)
+    bandwidth_mbps=1000
+    echo_info "假设带宽: ${bandwidth_mbps} Mbps (如不准确请修改脚本)"
+    
+    # 计算 BDP
+    bandwidth_bps=$((bandwidth_mbps * 1000000 / 8))
+    bdp_bytes=$((bandwidth_bps * rtt / 1000))
+    echo_info "计算 BDP: $((bdp_bytes/1024/1024)) MB"
+    
+    # 根据内存限制最大桶值
+    max_bucket=$((total_mem * 1024 * 1024 / 10))  # 不超过内存的 10%
+    
+    # 选择桶值
+    for candidate in 4194304 8388608 16777216 33554432 67108864; do
+        if [[ $bdp_bytes -le $candidate && $candidate -le $max_bucket ]]; then
+            bucket=$candidate
+            break
+        fi
+    done
+    bucket=${bucket:-$max_bucket}
+    
+    echo_info "最终桶值: $((bucket/1024/1024)) MB"
+    
+    # 清理旧配置文件
+    echo_info "清理旧配置文件..."
+    rm -f /etc/sysctl.d/99-sysctl.conf
+    rm -f /etc/sysctl.d/999-net-bbr-fq.conf
+    
+    # 备份现有配置
+    if [[ -f /etc/sysctl.d/99-bbr-ultimate.conf ]]; then
+        backup_conflict_file /etc/sysctl.d/99-bbr-ultimate.conf
+    fi
+    
+    # 清理主配置文件冲突
+    echo_info "清理主配置文件冲突..."
+    clean_sysctl_conf
+    
+    # 写入配置
+    cat >/etc/sysctl.d/99-bbr-ultimate.conf <<EOF
+# Auto-generated TCP BBR/FQ configuration
+# Generated: $(date)
+net.core.rmem_max = $bucket
+net.core.wmem_max = $bucket
+net.ipv4.tcp_rmem = 4096 87380 $bucket
+net.ipv4.tcp_wmem = 4096 65536 $bucket
+net.ipv4.tcp_congestion_control = bbr
+net.core.default_qdisc = fq
+EOF
+    
+    # 应用配置
+    echo_info "应用 sysctl 配置..."
+    sysctl -p /etc/sysctl.d/99-bbr-ultimate.conf
+    
+    # 应用 qdisc
+    echo_info "配置队列规则..."
+    tc qdisc replace dev "$default_iface" root fq 2>/dev/null || echo_warn "tc 配置失败(可能需要重启)"
+    
+    # 验证
+    echo ""
+    echo_info "========== 配置结果 =========="
+    sysctl net.ipv4.tcp_congestion_control net.core.default_qdisc net.core.rmem_max net.ipv4.tcp_rmem | sed 's/^/  /'
+    echo_info "=============================="
+    echo ""
+    echo_info "✓ 配置完成! 建议重启系统以确保所有设置生效"
+    
+    break_end
 }
 
 #=============================================================================
@@ -4564,6 +4599,7 @@ SERVICEEOF
     
     break_end
 }
+
 #=============================================================================
 # Sub-Store 多实例管理功能
 #=============================================================================
@@ -5506,7 +5542,6 @@ manage_substore() {
         esac
     done
 }
-
 
 #=============================================================================
 # 脚本入口
