@@ -1912,8 +1912,8 @@ detect_bandwidth() {
                 fi
             fi
             
-            # 运行 speedtest（自动选择最近服务器）
-            local speedtest_output=$(speedtest 2>&1)
+            # 运行 speedtest（自动选择最近服务器，自动接受许可）
+            local speedtest_output=$(speedtest --accept-license 2>&1)
             echo "$speedtest_output" >&2
             echo "" >&2
             echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" >&2
@@ -3417,7 +3417,7 @@ run_speedtest() {
         echo -e "${gl_lv}Speedtest 已安装，直接运行测试...${gl_bai}"
         echo "------------------------------------------------"
         echo ""
-        speedtest
+        speedtest --accept-license
         echo ""
         echo "------------------------------------------------"
         break_end
@@ -3504,8 +3504,8 @@ run_speedtest() {
     echo "------------------------------------------------"
     echo ""
 
-    # 运行测试
-    speedtest
+    # 运行测试（自动接受许可）
+    speedtest --accept-license
 
     echo ""
     echo "------------------------------------------------"
