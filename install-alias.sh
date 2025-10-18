@@ -35,14 +35,13 @@ fi
 echo -e "配置文件: ${GREEN}${RC_FILE}${NC}"
 echo ""
 
-# 定义要添加的别名
+# 定义要添加的别名（带时间戳参数，确保每次获取最新版本）
 ALIAS_CONTENT='
 # ========================================
 # net-tcp-tune 快捷别名 (自动添加)
+# 使用时间戳参数确保每次都获取最新版本，避免缓存
 # ========================================
-alias bbr="bash <(wget -qO- https://raw.githubusercontent.com/Eric86777/vps-tcp-tune/main/net-tcp-tune.sh)"
-alias tcp-tune="bash <(wget -qO- https://raw.githubusercontent.com/Eric86777/vps-tcp-tune/main/net-tcp-tune.sh)"
-alias net-tune="bash <(wget -qO- https://raw.githubusercontent.com/Eric86777/vps-tcp-tune/main/net-tcp-tune.sh)"
+alias bbr="bash <(curl -fsSL \"https://raw.githubusercontent.com/Eric86777/vps-tcp-tune/main/net-tcp-tune.sh?\$(date +%s)\")"
 '
 
 # 检查别名是否已存在
@@ -56,11 +55,9 @@ else
     echo ""
 fi
 
-echo -e "${CYAN}=== 可用的快捷命令 ===${NC}"
+echo -e "${CYAN}=== 快捷命令 ===${NC}"
 echo ""
-echo -e "  ${GREEN}bbr${NC}        - 最短命令（推荐）"
-echo -e "  ${GREEN}tcp-tune${NC}   - TCP 调优"
-echo -e "  ${GREEN}net-tune${NC}   - 网络调优"
+echo -e "  ${GREEN}bbr${NC}   - 一键运行脚本"
 echo ""
 echo -e "${CYAN}=== 使用方法 ===${NC}"
 echo ""

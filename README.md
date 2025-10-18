@@ -25,7 +25,7 @@ bash <(wget -qO- "https://raw.githubusercontent.com/Eric86777/vps-tcp-tune/main/
 
 ### 方式2：快捷别名（推荐）
 
-安装后只需输入 `bbr` 即可运行脚本：
+安装后只需输入 `bbr` 即可运行脚本（每次自动获取最新版本）：
 
 ```bash
 # 安装别名

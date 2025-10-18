@@ -37,15 +37,13 @@ bbr        # 只需输入这个！🎉
 
 ---
 
-## 🎯 可用的快捷命令
+## 🎯 快捷命令
 
-安装后，你可以使用以下任意命令：
+安装后，只需输入一个命令：
 
 | 命令 | 说明 | 长度 |
 |------|------|------|
-| `bbr` | 最短！⭐⭐⭐⭐⭐ | 3个字符 |
-| `tcp-tune` | TCP调优 | 8个字符 |
-| `net-tune` | 网络调优 | 8个字符 |
+| `bbr` | 一键运行⭐⭐⭐⭐⭐ | 3个字符 |
 
 **对比原始命令**：
 - 原始：95个字符
@@ -75,19 +73,19 @@ bash <(wget -qO- https://raw.githubusercontent.com/.../net-tcp-tune.sh)
 安装别名后，在你的配置文件（`~/.zshrc` 或 `~/.bashrc`）中添加：
 
 ```bash
-alias bbr="bash <(wget -qO- https://raw.githubusercontent.com/Eric86777/vps-tcp-tune/main/net-tcp-tune.sh)"
+alias bbr="bash <(curl -fsSL \"https://raw.githubusercontent.com/Eric86777/vps-tcp-tune/main/net-tcp-tune.sh?\$(date +%s)\")"
 ```
 
 **当你输入 `bbr` 时**：
 1. Shell 自动展开为完整命令
-2. 执行下载和运行
-3. 依然是最新版！
+2. 使用时间戳参数绕过缓存
+3. 下载并运行最新版脚本
 
 **优点**：
-- ✅ 超短命令
-- ✅ 永久有效
-- ✅ 依然最新版
-- ✅ 随处可用
+- ✅ 超短命令（只需3个字符）
+- ✅ 永久有效（安装一次，终身使用）
+- ✅ 自动获取最新版（每次都是最新）
+- ✅ 随处可用（所有终端都生效）
 
 ---
 
@@ -153,10 +151,8 @@ chmod +x bbr.sh
 # 编辑配置文件
 vim ~/.zshrc    # 或 ~/.bashrc
 
-# 删除这几行：
+# 删除这一行：
 # alias bbr="..."
-# alias tcp-tune="..."
-# alias net-tune="..."
 
 # 重新加载
 source ~/.zshrc
