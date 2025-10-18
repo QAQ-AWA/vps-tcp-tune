@@ -1862,8 +1862,8 @@ detect_bandwidth() {
     echo -e "${gl_kjlan}=== 服务器带宽检测 ===${gl_bai}" >&2
     echo "" >&2
     echo "请选择带宽配置方式：" >&2
-    echo "1. 自动检测（运行 speedtest，推荐）" >&2
-    echo "2. 使用通用值（16MB，跳过检测）" >&2
+    echo "1. 自动检测（推荐，自动选择最近服务器）" >&2
+    echo "2. 使用默认值（1000 Mbps / 1 Gbps，跳过检测）" >&2
     echo "" >&2
     
     read -e -p "请输入选择 [1]: " bw_choice
@@ -1871,9 +1871,10 @@ detect_bandwidth() {
     
     case "$bw_choice" in
         1)
-            # 自动检测带宽
+            # 自动检测带宽 - 选择最近服务器
             echo "" >&2
             echo -e "${gl_huang}正在运行 speedtest 测速...${gl_bai}" >&2
+            echo -e "${gl_zi}提示: 自动选择距离最近的服务器${gl_bai}" >&2
             echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" >&2
             echo "" >&2
             
@@ -1911,20 +1912,76 @@ detect_bandwidth() {
                 fi
             fi
             
-            # 运行speedtest并捕获输出
+            # 运行 speedtest（自动选择最近服务器）
             local speedtest_output=$(speedtest 2>&1)
             echo "$speedtest_output" >&2
             echo "" >&2
             echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" >&2
             echo "" >&2
             
-            # 提取Upload速度（Mbps）
-            local upload_speed=$(echo "$speedtest_output" | grep -i "Upload:" | grep -oP '\d+\.\d+' | head -n1)
+            # 提取上传速度
+            local upload_speed=""
             
+            # 方法1：使用 Perl 正则表达式
+            if echo "$speedtest_output" | grep -q "Upload:"; then
+                upload_speed=$(echo "$speedtest_output" | grep -i "Upload:" | grep -oP '\d+\.\d+' 2>/dev/null | head -n1)
+            fi
+            
+            # 方法2：如果方法1失败，使用 awk（兼容性更好）
             if [ -z "$upload_speed" ]; then
-                echo -e "${gl_huang}无法自动检测带宽，将使用通用值 16MB${gl_bai}" >&2
-                echo "500"
-                return 1
+                upload_speed=$(echo "$speedtest_output" | grep -i "Upload:" | awk '{for(i=1;i<=NF;i++) if($i ~ /^[0-9]+\.[0-9]+$/) {print $i; exit}}')
+            fi
+            
+            # 检查是否成功获取速度
+            if [ -z "$upload_speed" ] || echo "$speedtest_output" | grep -qi "FAILED\|error"; then
+                echo -e "${gl_huang}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${gl_bai}" >&2
+                echo -e "${gl_huang}⚠️  无法自动检测带宽${gl_bai}" >&2
+                echo -e "${gl_huang}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${gl_bai}" >&2
+                echo "" >&2
+                echo -e "${gl_zi}原因: 测速服务器可能暂时不可用${gl_bai}" >&2
+                echo "" >&2
+                echo -e "${gl_kjlan}默认配置方案：${gl_bai}" >&2
+                echo -e "  带宽:       ${gl_huang}1000 Mbps (1 Gbps)${gl_bai}" >&2
+                echo -e "  缓冲区:     ${gl_huang}16 MB${gl_bai}" >&2
+                echo -e "  适用场景:   ${gl_zi}标准 1Gbps 服务器（覆盖大多数场景）${gl_bai}" >&2
+                echo "" >&2
+                echo -e "${gl_huang}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${gl_bai}" >&2
+                echo "" >&2
+                
+                # 询问用户确认
+                read -e -p "是否使用默认值 1000 Mbps？(Y/N) [Y]: " use_default
+                use_default=${use_default:-Y}
+                
+                case "$use_default" in
+                    [Yy])
+                        echo "" >&2
+                        echo -e "${gl_lv}✅ 使用默认配置: 1000 Mbps（16 MB 缓冲区）${gl_bai}" >&2
+                        echo "1000"
+                        return 0
+                        ;;
+                    [Nn])
+                        echo "" >&2
+                        echo -e "${gl_zi}请手动输入带宽值${gl_bai}" >&2
+                        local manual_bandwidth=""
+                        while true; do
+                            read -e -p "请输入上传带宽（单位：Mbps，如 500、1000、2000）: " manual_bandwidth
+                            if [[ "$manual_bandwidth" =~ ^[0-9]+$ ]] && [ "$manual_bandwidth" -gt 0 ]; then
+                                echo "" >&2
+                                echo -e "${gl_lv}✅ 使用自定义值: ${manual_bandwidth} Mbps${gl_bai}" >&2
+                                echo "$manual_bandwidth"
+                                return 0
+                            else
+                                echo -e "${gl_hong}❌ 请输入有效的数字${gl_bai}" >&2
+                            fi
+                        done
+                        ;;
+                    *)
+                        echo "" >&2
+                        echo -e "${gl_huang}输入无效，使用默认值 1000 Mbps${gl_bai}" >&2
+                        echo "1000"
+                        return 0
+                        ;;
+                esac
             fi
             
             # 转为整数
@@ -1938,17 +1995,16 @@ detect_bandwidth() {
             return 0
             ;;
         2)
-            # 使用通用值
+            # 使用默认值
             echo "" >&2
-            echo -e "${gl_huang}使用通用配置: 16MB 缓冲区${gl_bai}" >&2
-            echo "说明: 适合大多数 500-2000 Mbps 带宽场景" >&2
+            echo -e "${gl_lv}使用默认配置: 1000 Mbps（16 MB 缓冲区）${gl_bai}" >&2
+            echo -e "${gl_zi}说明: 适合标准 1Gbps 服务器，覆盖大多数场景${gl_bai}" >&2
             echo "" >&2
-            # 返回对应1000Mbps的值
             echo "1000"
             return 0
             ;;
         *)
-            echo -e "${gl_huang}无效选择，使用通用值${gl_bai}" >&2
+            echo -e "${gl_huang}无效选择，使用默认值 1000 Mbps${gl_bai}" >&2
             echo "1000"
             return 1
             ;;
