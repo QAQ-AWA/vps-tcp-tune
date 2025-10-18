@@ -1912,27 +1912,91 @@ detect_bandwidth() {
                 fi
             fi
             
-            # 运行 speedtest（自动选择最近服务器，自动接受许可）
-            local speedtest_output=$(speedtest --accept-license 2>&1)
+            # 智能测速：自动选择 → 失败换备用服务器
+            local speedtest_output=""
+            local upload_speed=""
+            local failed_server_id=""
+            local backup_servers=("5029" "21569" "24215" "28910")  # 全球稳定服务器池
+            
+            # 第一次尝试：自动选择最近服务器
+            echo -e "${gl_zi}正在测速（自动选择最近服务器）...${gl_bai}" >&2
+            speedtest_output=$(speedtest --accept-license 2>&1)
             echo "$speedtest_output" >&2
-            echo "" >&2
-            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" >&2
             echo "" >&2
             
             # 提取上传速度
-            local upload_speed=""
-            
-            # 方法1：使用 Perl 正则表达式
             if echo "$speedtest_output" | grep -q "Upload:"; then
                 upload_speed=$(echo "$speedtest_output" | grep -i "Upload:" | grep -oP '\d+\.\d+' 2>/dev/null | head -n1)
             fi
-            
-            # 方法2：如果方法1失败，使用 awk（兼容性更好）
             if [ -z "$upload_speed" ]; then
                 upload_speed=$(echo "$speedtest_output" | grep -i "Upload:" | awk '{for(i=1;i<=NF;i++) if($i ~ /^[0-9]+\.[0-9]+$/) {print $i; exit}}')
             fi
             
-            # 检查是否成功获取速度
+            # 第一次成功？
+            if [ -n "$upload_speed" ] && ! echo "$speedtest_output" | grep -qi "FAILED\|error"; then
+                echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" >&2
+                echo "" >&2
+                # 成功，直接使用
+            else
+                # 第一次失败，提取失败的服务器 ID
+                failed_server_id=$(echo "$speedtest_output" | grep -oP 'Server:.*\(id:\s*\K[0-9]+' | head -n1)
+                local failed_server_name=$(echo "$speedtest_output" | grep "Server:" | head -n1 | sed 's/.*Server: //' | sed 's/ (id:.*//')
+                
+                echo -e "${gl_huang}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${gl_bai}" >&2
+                echo -e "${gl_huang}⚠️  首次测速失败${gl_bai}" >&2
+                if [ -n "$failed_server_name" ]; then
+                    echo -e "${gl_zi}失败服务器: ${failed_server_name} (id: ${failed_server_id})${gl_bai}" >&2
+                fi
+                echo -e "${gl_zi}正在切换到备用服务器...${gl_bai}" >&2
+                echo -e "${gl_huang}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${gl_bai}" >&2
+                echo "" >&2
+                
+                # 尝试备用服务器
+                for server_id in "${backup_servers[@]}"; do
+                    # 跳过刚才失败的服务器
+                    if [ "$server_id" = "$failed_server_id" ]; then
+                        continue
+                    fi
+                    
+                    local server_desc="备用服务器 #${server_id}"
+                    case "$server_id" in
+                        5029) server_desc="Speedtest.net (US)" ;;
+                        21569) server_desc="i3D.net (Global CDN)" ;;
+                        24215) server_desc="SoftLayer (Global)" ;;
+                        28910) server_desc="Bharti Airtel (Asia)" ;;
+                    esac
+                    
+                    echo -e "${gl_zi}尝试服务器: ${server_desc}${gl_bai}" >&2
+                    speedtest_output=$(speedtest --accept-license --server-id="$server_id" 2>&1)
+                    echo "$speedtest_output" >&2
+                    echo "" >&2
+                    
+                    # 提取速度
+                    upload_speed=""
+                    if echo "$speedtest_output" | grep -q "Upload:"; then
+                        upload_speed=$(echo "$speedtest_output" | grep -i "Upload:" | grep -oP '\d+\.\d+' 2>/dev/null | head -n1)
+                    fi
+                    if [ -z "$upload_speed" ]; then
+                        upload_speed=$(echo "$speedtest_output" | grep -i "Upload:" | awk '{for(i=1;i<=NF;i++) if($i ~ /^[0-9]+\.[0-9]+$/) {print $i; exit}}')
+                    fi
+                    
+                    # 成功了？
+                    if [ -n "$upload_speed" ] && ! echo "$speedtest_output" | grep -qi "FAILED\|error"; then
+                        echo -e "${gl_lv}✅ 切换成功！使用 ${server_desc}${gl_bai}" >&2
+                        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" >&2
+                        echo "" >&2
+                        break
+                    else
+                        echo -e "${gl_huang}⚠️  此服务器也失败，继续尝试下一个...${gl_bai}" >&2
+                        echo "" >&2
+                    fi
+                done
+            fi
+            
+            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" >&2
+            echo "" >&2
+            
+            # 所有尝试都失败了
             if [ -z "$upload_speed" ] || echo "$speedtest_output" | grep -qi "FAILED\|error"; then
                 echo -e "${gl_huang}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${gl_bai}" >&2
                 echo -e "${gl_huang}⚠️  无法自动检测带宽${gl_bai}" >&2
