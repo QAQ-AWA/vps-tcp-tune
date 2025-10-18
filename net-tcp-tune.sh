@@ -3480,9 +3480,9 @@ show_main_menu() {
         echo ""
         echo -e "${gl_kjlan}[BBR TCP调优]${gl_bai}"
         echo "3. NS论坛CAKE调优"
-        echo "4. Debian12 调优（智能BDP计算+内存保护）"
-        echo "5. 科技lion高性能模式内核参数优化"
-        echo "6. BBR 直连/落地优化（智能带宽检测）"
+        echo "4. 科技lion高性能模式内核参数优化"
+        echo "5. BBR 直连/落地优化（智能带宽检测）"
+        echo "6. Debian12 调优（智能BDP计算+内存保护）"
         echo ""
         echo -e "${gl_kjlan}[系统设置]${gl_bai}"
         echo "7. 虚拟内存管理"
@@ -3526,9 +3526,9 @@ show_main_menu() {
         echo ""
         echo -e "${gl_kjlan}[BBR TCP调优]${gl_bai}"
         echo "2. NS论坛CAKE调优"
-        echo "3. Debian12 调优（智能BDP计算+内存保护）"
-        echo "4. 科技lion高性能模式内核参数优化"
-        echo "5. BBR 直连/落地优化（智能带宽检测）"
+        echo "3. 科技lion高性能模式内核参数优化"
+        echo "4. BBR 直连/落地优化（智能带宽检测）"
+        echo "5. Debian12 调优（智能BDP计算+内存保护）"
         echo ""
         echo -e "${gl_kjlan}[系统设置]${gl_bai}"
         echo "6. 虚拟内存管理"
@@ -3600,28 +3600,28 @@ show_main_menu() {
             if [ $is_installed -eq 0 ]; then
                 startbbrcake
             else
-                debian12_tune
+                Kernel_optimize
             fi
             ;;
         4)
             if [ $is_installed -eq 0 ]; then
-                debian12_tune
-            else
                 Kernel_optimize
+            else
+                bbr_configure_direct
+                break_end
             fi
             ;;
         5)
             if [ $is_installed -eq 0 ]; then
-                Kernel_optimize
-            else
                 bbr_configure_direct
                 break_end
+            else
+                debian12_tune
             fi
             ;;
         6)
             if [ $is_installed -eq 0 ]; then
-                bbr_configure_direct
-                break_end
+                debian12_tune
             else
                 manage_swap
             fi
@@ -4189,14 +4189,29 @@ debian12_tune() {
     fi
     echo_info "默认网卡: $default_iface"
     
-    # 检测 RTT(使用公网 DNS)
+    # 检测 RTT(使用公网 DNS - 多个备选)
     echo_info "检测网络延迟..."
-    rtt=$(ping -c 3 -q 8.8.8.8 2>/dev/null | awk -F'/' '/rtt/ {print int($5)}' || echo "")
+    rtt=""
+    
+    # 尝试多个公网 IP（按优先级）
+    for target_ip in 8.8.8.8 1.1.1.1 114.114.114.114 223.5.5.5; do
+        if ping -c 1 -W 2 "$target_ip" >/dev/null 2>&1; then
+            # 尝试多种 awk 解析方式（兼容不同 ping 输出格式）
+            rtt=$(ping -c 3 -q "$target_ip" 2>/dev/null | awk -F'[=/]' '/rtt|round-trip/ {for(i=1;i<=NF;i++) if($i~/^[0-9.]+$/ && $i>0) {print int($i); exit}}')
+            
+            if [[ -n "$rtt" && $rtt -gt 0 ]]; then
+                echo_info "检测到 RTT: ${rtt} ms (目标: $target_ip)"
+                break
+            fi
+        fi
+    done
+    
+    # 如果所有方式都失败，使用默认值
     if [[ -z "$rtt" || $rtt -eq 0 ]]; then
         rtt=50
-        echo_warn "无法检测 RTT,使用默认值 ${rtt} ms"
-    else
-        echo_info "检测到 RTT: ${rtt} ms"
+        echo_warn "无法检测 RTT (可能防火墙阻止 ICMP 或网络不通)"
+        echo_warn "使用默认值: ${rtt} ms"
+        echo_warn "提示: 可手动修改脚本第4202行的 rtt 值"
     fi
     
     # 带宽设置(建议改为交互式或配置文件)
