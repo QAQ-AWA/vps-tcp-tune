@@ -1912,86 +1912,75 @@ detect_bandwidth() {
                 fi
             fi
             
-            # 智能测速：自动选择 → 失败换备用服务器
-            local speedtest_output=""
-            local upload_speed=""
-            local failed_server_id=""
-            local backup_servers=("5029" "21569" "24215" "28910")  # 全球稳定服务器池
+            # 智能测速：获取附近服务器列表，按距离依次尝试
+            echo -e "${gl_zi}正在搜索附近测速服务器...${gl_bai}" >&2
             
-            # 第一次尝试：自动选择最近服务器
-            echo -e "${gl_zi}正在测速（自动选择最近服务器）...${gl_bai}" >&2
-            speedtest_output=$(speedtest --accept-license 2>&1)
-            echo "$speedtest_output" >&2
+            # 获取附近服务器列表（按延迟排序）
+            local servers_list=$(speedtest --accept-license --servers 2>/dev/null | grep -oP '^\s*\K[0-9]+' | head -n 10)
+            
+            if [ -z "$servers_list" ]; then
+                echo -e "${gl_huang}无法获取服务器列表，使用自动选择...${gl_bai}" >&2
+                servers_list="auto"
+            else
+                local server_count=$(echo "$servers_list" | wc -l)
+                echo -e "${gl_lv}✅ 找到 ${server_count} 个附近服务器${gl_bai}" >&2
+            fi
             echo "" >&2
             
-            # 提取上传速度
-            if echo "$speedtest_output" | grep -q "Upload:"; then
-                upload_speed=$(echo "$speedtest_output" | grep -i "Upload:" | grep -oP '\d+\.\d+' 2>/dev/null | head -n1)
-            fi
-            if [ -z "$upload_speed" ]; then
-                upload_speed=$(echo "$speedtest_output" | grep -i "Upload:" | awk '{for(i=1;i<=NF;i++) if($i ~ /^[0-9]+\.[0-9]+$/) {print $i; exit}}')
-            fi
+            local speedtest_output=""
+            local upload_speed=""
+            local attempt=0
+            local max_attempts=5  # 最多尝试5个服务器
             
-            # 第一次成功？
-            if [ -n "$upload_speed" ] && ! echo "$speedtest_output" | grep -qi "FAILED\|error"; then
-                echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" >&2
-                echo "" >&2
-                # 成功，直接使用
-            else
-                # 第一次失败，提取失败的服务器 ID
-                failed_server_id=$(echo "$speedtest_output" | grep -oP 'Server:.*\(id:\s*\K[0-9]+' | head -n1)
-                local failed_server_name=$(echo "$speedtest_output" | grep "Server:" | head -n1 | sed 's/.*Server: //' | sed 's/ (id:.*//')
+            # 逐个尝试服务器
+            for server_id in $servers_list; do
+                attempt=$((attempt + 1))
                 
-                echo -e "${gl_huang}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${gl_bai}" >&2
-                echo -e "${gl_huang}⚠️  首次测速失败${gl_bai}" >&2
-                if [ -n "$failed_server_name" ]; then
-                    echo -e "${gl_zi}失败服务器: ${failed_server_name} (id: ${failed_server_id})${gl_bai}" >&2
+                if [ $attempt -gt $max_attempts ]; then
+                    echo -e "${gl_huang}已尝试 ${max_attempts} 个服务器，停止尝试${gl_bai}" >&2
+                    break
                 fi
-                echo -e "${gl_zi}正在切换到备用服务器...${gl_bai}" >&2
-                echo -e "${gl_huang}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${gl_bai}" >&2
+                
+                if [ "$server_id" = "auto" ]; then
+                    echo -e "${gl_zi}[尝试 ${attempt}] 自动选择最近服务器...${gl_bai}" >&2
+                    speedtest_output=$(speedtest --accept-license 2>&1)
+                else
+                    echo -e "${gl_zi}[尝试 ${attempt}] 测试服务器 #${server_id}...${gl_bai}" >&2
+                    speedtest_output=$(speedtest --accept-license --server-id="$server_id" 2>&1)
+                fi
+                
+                echo "$speedtest_output" >&2
                 echo "" >&2
                 
-                # 尝试备用服务器
-                for server_id in "${backup_servers[@]}"; do
-                    # 跳过刚才失败的服务器
-                    if [ "$server_id" = "$failed_server_id" ]; then
-                        continue
-                    fi
-                    
-                    local server_desc="备用服务器 #${server_id}"
-                    case "$server_id" in
-                        5029) server_desc="Speedtest.net (US)" ;;
-                        21569) server_desc="i3D.net (Global CDN)" ;;
-                        24215) server_desc="SoftLayer (Global)" ;;
-                        28910) server_desc="Bharti Airtel (Asia)" ;;
-                    esac
-                    
-                    echo -e "${gl_zi}尝试服务器: ${server_desc}${gl_bai}" >&2
-                    speedtest_output=$(speedtest --accept-license --server-id="$server_id" 2>&1)
-                    echo "$speedtest_output" >&2
+                # 提取上传速度
+                upload_speed=""
+                if echo "$speedtest_output" | grep -q "Upload:"; then
+                    upload_speed=$(echo "$speedtest_output" | grep -i "Upload:" | grep -oP '\d+\.\d+' 2>/dev/null | head -n1)
+                fi
+                if [ -z "$upload_speed" ]; then
+                    upload_speed=$(echo "$speedtest_output" | grep -i "Upload:" | awk '{for(i=1;i<=NF;i++) if($i ~ /^[0-9]+\.[0-9]+$/) {print $i; exit}}')
+                fi
+                
+                # 检查是否成功
+                if [ -n "$upload_speed" ] && ! echo "$speedtest_output" | grep -qi "FAILED\|error"; then
+                    local success_server=$(echo "$speedtest_output" | grep "Server:" | head -n1 | sed 's/.*Server: //')
+                    echo -e "${gl_lv}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${gl_bai}" >&2
+                    echo -e "${gl_lv}✅ 测速成功！${gl_bai}" >&2
+                    echo -e "${gl_zi}使用服务器: ${success_server}${gl_bai}" >&2
+                    echo -e "${gl_lv}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${gl_bai}" >&2
                     echo "" >&2
-                    
-                    # 提取速度
-                    upload_speed=""
-                    if echo "$speedtest_output" | grep -q "Upload:"; then
-                        upload_speed=$(echo "$speedtest_output" | grep -i "Upload:" | grep -oP '\d+\.\d+' 2>/dev/null | head -n1)
-                    fi
-                    if [ -z "$upload_speed" ]; then
-                        upload_speed=$(echo "$speedtest_output" | grep -i "Upload:" | awk '{for(i=1;i<=NF;i++) if($i ~ /^[0-9]+\.[0-9]+$/) {print $i; exit}}')
-                    fi
-                    
-                    # 成功了？
-                    if [ -n "$upload_speed" ] && ! echo "$speedtest_output" | grep -qi "FAILED\|error"; then
-                        echo -e "${gl_lv}✅ 切换成功！使用 ${server_desc}${gl_bai}" >&2
-                        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" >&2
-                        echo "" >&2
-                        break
+                    break
+                else
+                    local failed_server=$(echo "$speedtest_output" | grep "Server:" | head -n1 | sed 's/.*Server: //' | sed 's/[[:space:]]*$//')
+                    if [ -n "$failed_server" ]; then
+                        echo -e "${gl_huang}⚠️  失败: ${failed_server}${gl_bai}" >&2
                     else
-                        echo -e "${gl_huang}⚠️  此服务器也失败，继续尝试下一个...${gl_bai}" >&2
-                        echo "" >&2
+                        echo -e "${gl_huang}⚠️  此服务器失败${gl_bai}" >&2
                     fi
-                done
-            fi
+                    echo -e "${gl_zi}继续尝试下一个服务器...${gl_bai}" >&2
+                    echo "" >&2
+                fi
+            done
             
             echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" >&2
             echo "" >&2
@@ -3732,51 +3721,6 @@ show_main_menu() {
         echo "10. IPv4/IPv6连接检测"
         echo ""
         echo -e "${gl_kjlan}[Xray配置]${gl_bai}"
-        echo "12. Realm转发连接分析"
-        echo "13. 查看Xray配置"
-        echo "14. 设置Xray IPv6出站"
-        echo "15. 恢复Xray默认配置"
-        echo ""
-        echo -e "${gl_kjlan}[系统信息]${gl_bai}"
-        echo "16. 查看详细状态"
-        echo ""
-        echo -e "${gl_kjlan}[服务器检测合集]${gl_bai}"
-        echo "17. NS一键检测脚本"
-        echo "18. 服务器带宽测试"
-        echo "19. 三网回程路由测试"
-        echo "20. IP质量检测"
-        echo "21. IP质量检测-仅IPv4"
-        echo "22. 网络延迟质量检测"
-        echo "23. 国际互联速度测试"
-        echo "24. IP媒体/AI解锁检测"
-        echo ""
-        echo -e "${gl_kjlan}[脚本合集]${gl_bai}"
-        echo "25. PF_realm转发脚本"
-        echo "26. 御坂美琴一键双协议"
-        echo "27. F佬一键sing box脚本"
-        echo "28. 科技lion脚本"
-        echo "29. NS论坛的cake调优"
-        echo "30. 酷雪云脚本"
-        echo ""
-        echo -e "${gl_kjlan}[代理部署]${gl_bai}"
-        echo "31. 一键部署SOCKS5代理"
-        echo "32. Sub-Store多实例管理"
-    else
-        echo "1. 安装 XanMod 内核 + BBR v3"
-        echo ""
-        echo -e "${gl_kjlan}[BBR TCP调优]${gl_bai}"
-        echo "2. NS论坛CAKE调优"
-        echo "3. 科技lion高性能模式内核参数优化"
-        echo "4. BBR 直连/落地优化（智能带宽检测）"
-        echo ""
-        echo -e "${gl_kjlan}[系统设置]${gl_bai}"
-        echo "5. 虚拟内存管理"
-        echo "6. IPv6管理（临时/永久禁用/取消）"
-        echo "7. 设置临时SOCKS5代理"
-        echo "8. 设置IPv4/IPv6优先级"
-        echo "9. IPv4/IPv6连接检测"
-        echo ""
-        echo -e "${gl_kjlan}[Xray配置]${gl_bai}"
         echo "11. Realm转发连接分析"
         echo "12. 查看Xray配置"
         echo "13. 设置Xray IPv6出站"
@@ -3806,6 +3750,51 @@ show_main_menu() {
         echo -e "${gl_kjlan}[代理部署]${gl_bai}"
         echo "30. 一键部署SOCKS5代理"
         echo "31. Sub-Store多实例管理"
+    else
+        echo "1. 安装 XanMod 内核 + BBR v3"
+        echo ""
+        echo -e "${gl_kjlan}[BBR TCP调优]${gl_bai}"
+        echo "2. NS论坛CAKE调优"
+        echo "3. 科技lion高性能模式内核参数优化"
+        echo "4. BBR 直连/落地优化（智能带宽检测）"
+        echo ""
+        echo -e "${gl_kjlan}[系统设置]${gl_bai}"
+        echo "5. 虚拟内存管理"
+        echo "6. IPv6管理（临时/永久禁用/取消）"
+        echo "7. 设置临时SOCKS5代理"
+        echo "8. 设置IPv4/IPv6优先级"
+        echo "9. IPv4/IPv6连接检测"
+        echo ""
+        echo -e "${gl_kjlan}[Xray配置]${gl_bai}"
+        echo "10. Realm转发连接分析"
+        echo "11. 查看Xray配置"
+        echo "12. 设置Xray IPv6出站"
+        echo "13. 恢复Xray默认配置"
+        echo ""
+        echo -e "${gl_kjlan}[系统信息]${gl_bai}"
+        echo "14. 查看详细状态"
+        echo ""
+        echo -e "${gl_kjlan}[服务器检测合集]${gl_bai}"
+        echo "15. NS一键检测脚本"
+        echo "16. 服务器带宽测试"
+        echo "17. 三网回程路由测试"
+        echo "18. IP质量检测"
+        echo "19. IP质量检测-仅IPv4"
+        echo "20. 网络延迟质量检测"
+        echo "21. 国际互联速度测试"
+        echo "22. IP媒体/AI解锁检测"
+        echo ""
+        echo -e "${gl_kjlan}[脚本合集]${gl_bai}"
+        echo "23. PF_realm转发脚本"
+        echo "24. 御坂美琴一键双协议"
+        echo "25. F佬一键sing box脚本"
+        echo "26. 科技lion脚本"
+        echo "27. NS论坛的cake调优"
+        echo "28. 酷雪云脚本"
+        echo ""
+        echo -e "${gl_kjlan}[代理部署]${gl_bai}"
+        echo "29. 一键部署SOCKS5代理"
+        echo "30. Sub-Store多实例管理"
     fi
     
     echo ""
@@ -3928,112 +3917,112 @@ show_main_menu() {
                 run_ns_detect
             fi
             ;;
-        17)
+        16)
             if [ $is_installed -eq 0 ]; then
                 run_ns_detect
             else
                 run_speedtest
             fi
             ;;
-        18)
+        17)
             if [ $is_installed -eq 0 ]; then
                 run_speedtest
             else
                 run_backtrace
             fi
             ;;
-        19)
+        18)
             if [ $is_installed -eq 0 ]; then
                 run_backtrace
             else
                 run_ip_quality_check
             fi
             ;;
-        20)
+        19)
             if [ $is_installed -eq 0 ]; then
                 run_ip_quality_check
             else
                 run_ip_quality_check_ipv4
             fi
             ;;
-        21)
+        20)
             if [ $is_installed -eq 0 ]; then
                 run_ip_quality_check_ipv4
             else
                 run_network_latency_check
             fi
             ;;
-        22)
+        21)
             if [ $is_installed -eq 0 ]; then
                 run_network_latency_check
             else
                 run_international_speed_test
             fi
             ;;
-        23)
+        22)
             if [ $is_installed -eq 0 ]; then
                 run_international_speed_test
             else
                 run_unlock_check
             fi
             ;;
-        24)
+        23)
             if [ $is_installed -eq 0 ]; then
                 run_unlock_check
             else
                 run_pf_realm
             fi
             ;;
-        25)
+        24)
             if [ $is_installed -eq 0 ]; then
                 run_pf_realm
             else
                 run_misaka_xray
             fi
             ;;
-        26)
+        25)
             if [ $is_installed -eq 0 ]; then
                 run_misaka_xray
             else
                 run_fscarmen_singbox
             fi
             ;;
-        27)
+        26)
             if [ $is_installed -eq 0 ]; then
                 run_fscarmen_singbox
             else
                 run_kejilion_script
             fi
             ;;
-        28)
+        27)
             if [ $is_installed -eq 0 ]; then
                 run_kejilion_script
             else
                 run_ns_cake
             fi
             ;;
-        29)
+        28)
             if [ $is_installed -eq 0 ]; then
                 run_ns_cake
             else
                 run_kxy_script
             fi
             ;;
-        30)
+        29)
             if [ $is_installed -eq 0 ]; then
                 run_kxy_script
             else
                 deploy_socks5
             fi
             ;;
-        31)
+        30)
             if [ $is_installed -eq 0 ]; then
                 deploy_socks5
             else
                 manage_substore
             fi
             ;;
-        32)
+        31)
             if [ $is_installed -eq 0 ]; then
                 manage_substore
             else
