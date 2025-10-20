@@ -3701,14 +3701,37 @@ iperf3_single_thread_test() {
     
     # 检查 iperf3 是否安装
     if ! command -v iperf3 &>/dev/null; then
-        echo -e "${gl_huang}检测到 iperf3 未安装，正在安装...${gl_bai}"
-        install_package iperf3
-        if [ $? -ne 0 ]; then
-            echo -e "${gl_hong}iperf3 安装失败！${gl_bai}"
+        echo -e "${gl_huang}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${gl_bai}"
+        echo -e "${gl_huang}检测到 iperf3 未安装，正在自动安装...${gl_bai}"
+        echo -e "${gl_huang}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${gl_bai}"
+        echo ""
+        
+        if command -v apt &>/dev/null; then
+            echo "步骤 1/2: 更新软件包列表..."
+            apt update -y
+            
+            echo ""
+            echo "步骤 2/2: 安装 iperf3..."
+            apt install -y iperf3
+            
+            if [ $? -ne 0 ]; then
+                echo ""
+                echo -e "${gl_hong}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${gl_bai}"
+                echo -e "${gl_hong}iperf3 安装失败！${gl_bai}"
+                echo -e "${gl_hong}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${gl_bai}"
+                break_end
+                return 1
+            fi
+        else
+            echo -e "${gl_hong}错误: 不支持的包管理器（仅支持 apt）${gl_bai}"
             break_end
             return 1
         fi
-        echo -e "${gl_lv}iperf3 安装成功！${gl_bai}"
+        
+        echo ""
+        echo -e "${gl_lv}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${gl_bai}"
+        echo -e "${gl_lv}✓ iperf3 安装成功！${gl_bai}"
+        echo -e "${gl_lv}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${gl_bai}"
         echo ""
     fi
     
