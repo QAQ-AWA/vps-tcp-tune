@@ -60,14 +60,13 @@ chmod +x net-tcp-tune.sh
 
 ## 🎯 推荐调优流程
 
-> **⚡ 三步完整优化 - 系统性提升网络性能**
+> **⚡ 经过十几二十几台服务器实测（包括酷雪云北京9929等节点）**
 
-### 📋 流程概览
+### 📋 首选方案（推荐）
 
 ```
 步骤1：安装 BBR v3 内核 → 重启
-步骤2：CAKE 队列调优 → 重启  
-步骤3：Reality专用调优 → 完成
+步骤2：BBR 直连/落地优化（智能带宽检测）→ 完成
 ```
 
 ### 🔧 详细步骤
@@ -91,7 +90,33 @@ reboot
 </details>
 
 <details>
-<summary><b>【步骤2】CAKE 队列调优</b></summary>
+<summary><b>【步骤2】BBR 直连/落地优化（智能带宽检测）</b></summary>
+
+```bash
+# 再次运行脚本（无缓存）
+bash <(curl -fsSL "https://raw.githubusercontent.com/Eric86777/vps-tcp-tune/main/net-tcp-tune.sh?$(date +%s)")
+
+# 选择菜单
+选择 2 → BBR 直连/落地优化（智能带宽检测）
+      → 选择 1 → 进行自动检测
+
+# 立即生效
+```
+
+**✅ 完成后**：BBR v3 + 智能缓冲区优化完成 🎉
+
+</details>
+
+### 📋 次选方案（备用）
+
+```
+步骤1：安装 BBR v3 内核 → 重启
+步骤2：NS论坛CAKE调优 → 重启  
+步骤3：科技lion高性能模式 → 完成
+```
+
+<details>
+<summary><b>【步骤2备选】CAKE 队列调优</b></summary>
 
 ```bash
 # 再次运行脚本（无缓存）
@@ -109,7 +134,7 @@ reboot
 </details>
 
 <details>
-<summary><b>【步骤3】Reality专用调优</b></summary>
+<summary><b>【步骤3备选】Reality专用调优</b></summary>
 
 ```bash
 # 再次运行脚本（无缓存）
@@ -160,8 +185,8 @@ bash <(curl -fsSL "https://raw.githubusercontent.com/Eric86777/vps-tcp-tune/main
 ### ✨ 十大功能模块
 
 1. **🔧 内核管理** - XanMod 内核安装/更新/卸载（支持 x86_64 & ARM64）
-2. **⚡ BBR TCP调优** - CAKE队列优化 + Debian12智能调优（BDP自适应+内存保护） + 3种Reality专用优化（覆盖512MB-8GB+所有配置） + BBR直连优化（智能带宽检测）
-3. **🛠️ 系统设置** - 虚拟内存管理 + IPv6管理（临时/永久禁用/还原） + SOCKS5代理配置 + IPv4/IPv6 优先级 + IPv4/IPv6连接检测
+2. **⚡ BBR TCP调优** - BBR直连/落地优化（智能带宽检测）+ CAKE队列优化 + 3种Reality专用优化（覆盖512MB-8GB+所有配置）
+3. **🛠️ 系统设置** - IPv4/IPv6优先级 + 虚拟内存管理 + IPv6管理（临时/永久禁用/还原） + SOCKS5代理配置 + IPv4/IPv6连接检测
 4. **🔐 Xray 配置** - Realm转发分析 + 查看/IPv6出站/恢复默认配置
 5. **📊 网络测试** - Speedtest + 三网回程 + IP质量 + 延迟检测 + **iperf3单线程测试（NEW）**
 6. **🎯 流媒体检测** - Netflix/Disney+/OpenAI/Claude 解锁检测
@@ -180,13 +205,13 @@ bash <(curl -fsSL "https://raw.githubusercontent.com/Eric86777/vps-tcp-tune/main
 |------|-----------|-----------|
 | 安装/更新内核 | 1 | 1（更新） |
 | 卸载内核 | - | 2 |
-| NS论坛CAKE调优 | 2 | 3 |
-| 科技lion高性能模式 | 3 | 4 |
-| BBR直连/落地 | 4 | 5 |
-| 虚拟内存管理 | 5 | 6 |
-| **IPv6管理** | **6** | **7** |
-| **临时SOCKS5代理** | **7** | **8** |
-| IPv4/IPv6优先级 | 8 | 9 |
+| **BBR直连/落地** | **2** | **3** |
+| **NS论坛CAKE调优** | **3** | **4** |
+| **科技lion高性能模式** | **4** | **5** |
+| **IPv4/IPv6优先级** | **5** | **6** |
+| **虚拟内存管理** | **6** | **7** |
+| **IPv6管理** | **7** | **8** |
+| **临时SOCKS5代理** | **8** | **9** |
 | IPv4/IPv6连接检测 | 9 | 10 |
 | Realm转发分析 | 10 | 11 |
 | 查看Xray配置 | 11 | 12 |
@@ -311,7 +336,7 @@ version:        3
 <details>
 <summary>🧠 虚拟内存智能计算</summary>
 
-**菜单位置**：选项 **5**（未安装）/ **6**（已安装）
+**菜单位置**：选项 **6**（未安装）/ **7**（已安装）
 
 | 物理内存 | 推荐 SWAP | 计算公式 |
 |---------|-----------|---------|
@@ -386,7 +411,7 @@ net.core.default_qdisc = fq
 <details>
 <summary>⚡ BBR直连/落地优化（智能带宽检测）</summary>
 
-**菜单位置**：选项 **4**（未安装）/ **5**（已安装）
+**菜单位置**：选项 **2**（未安装）/ **3**（已安装）
 
 **智能带宽检测流程**：
 1. 🔍 选择检测方式：自动运行 speedtest / 使用通用值
@@ -411,7 +436,7 @@ net.core.default_qdisc = fq
 <details>
 <summary>⚙️ Reality专用内核调优（3种优化模式）</summary>
 
-**菜单位置**：选项 **3**（未安装）/ **4**（已安装）
+**菜单位置**：选项 **4**（未安装）/ **5**（已安装）
 
 **3种Reality专用优化模式**：
 
@@ -462,7 +487,7 @@ net.core.default_qdisc = fq
 <details>
 <summary>🌐 IPv6 管理（临时/永久禁用/还原）</summary>
 
-**菜单位置**：选项 **6**（未安装）/ **7**（已安装）
+**菜单位置**：选项 **7**（未安装）/ **8**（已安装）
 
 **三大核心功能**：
 
@@ -498,7 +523,7 @@ net.core.default_qdisc = fq
 <details>
 <summary>🔌 临时 SOCKS5 代理配置</summary>
 
-**菜单位置**：选项 **7**（未安装）/ **8**（已安装）
+**菜单位置**：选项 **8**（未安装）/ **9**（已安装）
 
 **功能特点**：
 - 交互式输入：IP、端口、用户名（可选）、密码（可选）
@@ -539,7 +564,7 @@ unset http_proxy https_proxy all_proxy
 <details>
 <summary>🌐 IPv4/IPv6 优先级设置</summary>
 
-**菜单位置**：选项 **8**（未安装）/ **9**（已安装）
+**菜单位置**：选项 **5**（未安装）/ **6**（已安装）
 
 修改 `/etc/gai.conf` 配置，自动显示当前出口 IP
 
