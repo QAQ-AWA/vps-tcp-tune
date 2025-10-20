@@ -1889,7 +1889,8 @@ detect_bandwidth() {
     echo "" >&2
     echo "请选择带宽配置方式：" >&2
     echo "1. 自动检测（推荐，自动选择最近服务器）" >&2
-    echo "2. 使用默认值（1000 Mbps / 1 Gbps，跳过检测）" >&2
+    echo "2. 手动指定测速服务器（指定服务器ID）" >&2
+    echo "3. 使用默认值（1000 Mbps / 1 Gbps，跳过检测）" >&2
     echo "" >&2
     
     read -e -p "请输入选择 [1]: " bw_choice
@@ -2074,6 +2075,154 @@ detect_bandwidth() {
             return 0
             ;;
         2)
+            # 手动指定测速服务器ID
+            echo "" >&2
+            echo -e "${gl_kjlan}=== 手动指定测速服务器 ===${gl_bai}" >&2
+            echo "" >&2
+            
+            # 检查speedtest是否安装
+            if ! command -v speedtest &>/dev/null; then
+                echo -e "${gl_huang}speedtest 未安装，正在安装...${gl_bai}" >&2
+                local cpu_arch=$(uname -m)
+                local download_url
+                case "$cpu_arch" in
+                    x86_64)
+                        download_url="https://install.speedtest.net/app/cli/ookla-speedtest-1.2.0-linux-x86_64.tgz"
+                        ;;
+                    aarch64)
+                        download_url="https://install.speedtest.net/app/cli/ookla-speedtest-1.2.0-linux-aarch64.tgz"
+                        ;;
+                    *)
+                        echo -e "${gl_hong}错误: 不支持的架构 ${cpu_arch}${gl_bai}" >&2
+                        echo "将使用通用值 1000 Mbps" >&2
+                        echo "1000"
+                        return 1
+                        ;;
+                esac
+                
+                cd /tmp
+                wget -q "$download_url" -O speedtest.tgz && \
+                tar -xzf speedtest.tgz && \
+                mv speedtest /usr/local/bin/ && \
+                rm -f speedtest.tgz
+                
+                if [ $? -ne 0 ]; then
+                    echo -e "${gl_hong}安装失败，将使用默认值 1000 Mbps${gl_bai}" >&2
+                    echo "1000"
+                    return 1
+                fi
+                echo -e "${gl_lv}✅ speedtest 安装成功${gl_bai}" >&2
+                echo "" >&2
+            fi
+            
+            # 显示如何查看服务器列表
+            echo -e "${gl_zi}📋 如何查看可用的测速服务器：${gl_bai}" >&2
+            echo "" >&2
+            echo -e "  方法1：查看所有服务器列表" >&2
+            echo -e "  ${gl_huang}speedtest --servers${gl_bai}" >&2
+            echo "" >&2
+            echo -e "  方法2：只显示附近服务器（推荐）" >&2
+            echo -e "  ${gl_huang}speedtest --servers | head -n 20${gl_bai}" >&2
+            echo "" >&2
+            echo -e "${gl_zi}💡 服务器列表格式说明：${gl_bai}" >&2
+            echo -e "  每行开头的数字就是服务器ID" >&2
+            echo -e "  例如: ${gl_huang}12345${gl_bai}) 服务商名称 (位置, 距离)" >&2
+            echo "" >&2
+            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" >&2
+            echo "" >&2
+            
+            # 询问是否现在查看服务器列表
+            read -e -p "是否现在查看附近的测速服务器列表？(Y/N) [Y]: " show_list
+            show_list=${show_list:-Y}
+            
+            if [[ "$show_list" =~ ^[Yy]$ ]]; then
+                echo "" >&2
+                echo -e "${gl_kjlan}附近的测速服务器列表：${gl_bai}" >&2
+                echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" >&2
+                speedtest --accept-license --servers 2>/dev/null | head -n 20 >&2
+                echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" >&2
+                echo "" >&2
+            fi
+            
+            # 输入服务器ID
+            local server_id=""
+            while true; do
+                read -e -p "$(echo -e "${gl_huang}请输入测速服务器ID（纯数字）: ${gl_bai}")" server_id
+                
+                if [[ "$server_id" =~ ^[0-9]+$ ]]; then
+                    break
+                else
+                    echo -e "${gl_hong}❌ 无效输入，请输入纯数字的服务器ID${gl_bai}" >&2
+                fi
+            done
+            
+            # 使用指定服务器测速
+            echo "" >&2
+            echo -e "${gl_huang}正在使用服务器 #${server_id} 测速...${gl_bai}" >&2
+            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" >&2
+            echo "" >&2
+            
+            local speedtest_output=$(speedtest --accept-license --server-id="$server_id" 2>&1)
+            echo "$speedtest_output" >&2
+            echo "" >&2
+            
+            # 提取上传速度
+            local upload_speed=""
+            if echo "$speedtest_output" | grep -q "Upload:"; then
+                upload_speed=$(echo "$speedtest_output" | grep -i "Upload:" | grep -oP '\d+\.\d+' 2>/dev/null | head -n1)
+            fi
+            if [ -z "$upload_speed" ]; then
+                upload_speed=$(echo "$speedtest_output" | grep -i "Upload:" | awk '{for(i=1;i<=NF;i++) if($i ~ /^[0-9]+\.[0-9]+$/) {print $i; exit}}')
+            fi
+            
+            # 检查测速是否成功
+            if [ -n "$upload_speed" ] && ! echo "$speedtest_output" | grep -qi "FAILED\|error"; then
+                local upload_mbps=${upload_speed%.*}
+                echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" >&2
+                echo -e "${gl_lv}✅ 测速成功！${gl_bai}" >&2
+                echo -e "${gl_lv}检测到上传带宽: ${upload_mbps} Mbps${gl_bai}" >&2
+                echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" >&2
+                echo "" >&2
+                echo "$upload_mbps"
+                return 0
+            else
+                echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" >&2
+                echo -e "${gl_hong}❌ 测速失败${gl_bai}" >&2
+                echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" >&2
+                echo "" >&2
+                echo -e "${gl_zi}可能原因：${gl_bai}" >&2
+                echo "  - 服务器ID不存在或已下线" >&2
+                echo "  - 网络连接问题" >&2
+                echo "  - 该服务器暂时不可用" >&2
+                echo "" >&2
+                
+                read -e -p "是否使用默认值 1000 Mbps？(Y/N) [Y]: " use_default
+                use_default=${use_default:-Y}
+                
+                if [[ "$use_default" =~ ^[Yy]$ ]]; then
+                    echo "" >&2
+                    echo -e "${gl_lv}✅ 使用默认配置: 1000 Mbps（16 MB 缓冲区）${gl_bai}" >&2
+                    echo "1000"
+                    return 0
+                else
+                    echo "" >&2
+                    echo -e "${gl_zi}请手动输入带宽值${gl_bai}" >&2
+                    local manual_bandwidth=""
+                    while true; do
+                        read -e -p "请输入上传带宽（单位：Mbps，如 500、1000、2000）: " manual_bandwidth
+                        if [[ "$manual_bandwidth" =~ ^[0-9]+$ ]] && [ "$manual_bandwidth" -gt 0 ]; then
+                            echo "" >&2
+                            echo -e "${gl_lv}✅ 使用自定义值: ${manual_bandwidth} Mbps${gl_bai}" >&2
+                            echo "$manual_bandwidth"
+                            return 0
+                        else
+                            echo -e "${gl_hong}❌ 请输入有效的数字${gl_bai}" >&2
+                        fi
+                    done
+                fi
+            fi
+            ;;
+        3)
             # 使用默认值
             echo "" >&2
             echo -e "${gl_lv}使用默认配置: 1000 Mbps（16 MB 缓冲区）${gl_bai}" >&2
