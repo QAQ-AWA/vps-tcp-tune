@@ -116,6 +116,24 @@ bbr
 ```
 
 <details>
+<summary><b>【步骤1】安装 XanMod 内核 + BBR v3</b></summary>
+
+```bash
+# 运行脚本
+bbr
+
+# 选择菜单
+选择 1 → 安装 XanMod 内核 + BBR v3
+
+# 重启生效
+reboot
+```
+
+**✅ 完成后**：XanMod 内核已安装，BBR v3 已启用
+
+</details>
+
+<details>
 <summary><b>【步骤2备选】CAKE 队列调优</b></summary>
 
 ```bash
