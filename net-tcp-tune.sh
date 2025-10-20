@@ -3689,6 +3689,196 @@ run_international_speed_test() {
 }
 
 #=============================================================================
+# iperf3 单线程网络测试
+#=============================================================================
+
+iperf3_single_thread_test() {
+    clear
+    echo -e "${gl_zi}╔════════════════════════════════════════════╗${gl_bai}"
+    echo -e "${gl_zi}║       iperf3 单线程网络性能测试            ║${gl_bai}"
+    echo -e "${gl_zi}╚════════════════════════════════════════════╝${gl_bai}"
+    echo ""
+    
+    # 检查 iperf3 是否安装
+    if ! command -v iperf3 &>/dev/null; then
+        echo -e "${gl_huang}检测到 iperf3 未安装，正在安装...${gl_bai}"
+        install_package iperf3
+        if [ $? -ne 0 ]; then
+            echo -e "${gl_hong}iperf3 安装失败！${gl_bai}"
+            break_end
+            return 1
+        fi
+        echo -e "${gl_lv}iperf3 安装成功！${gl_bai}"
+        echo ""
+    fi
+    
+    # 输入目标服务器
+    echo -e "${gl_kjlan}[步骤 1/3] 输入目标服务器${gl_bai}"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    read -e -p "请输入目标服务器 IP 或域名: " target_host
+    
+    if [ -z "$target_host" ]; then
+        echo -e "${gl_hong}错误: 目标服务器不能为空！${gl_bai}"
+        break_end
+        return 1
+    fi
+    
+    echo ""
+    
+    # 选择测试方向
+    echo -e "${gl_kjlan}[步骤 2/3] 选择测试方向${gl_bai}"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo "1. 上传测试（本机 → 远程服务器）"
+    echo "2. 下载测试（远程服务器 → 本机）"
+    echo ""
+    read -e -p "请选择测试方向 [1-2]: " direction_choice
+    
+    case "$direction_choice" in
+        1)
+            direction_flag=""
+            direction_text="上行（本机 → ${target_host}）"
+            ;;
+        2)
+            direction_flag="-R"
+            direction_text="下行（${target_host} → 本机）"
+            ;;
+        *)
+            echo -e "${gl_hong}无效的选择，使用默认值: 上传测试${gl_bai}"
+            direction_flag=""
+            direction_text="上行（本机 → ${target_host}）"
+            ;;
+    esac
+    
+    echo ""
+    
+    # 输入测试时长
+    echo -e "${gl_kjlan}[步骤 3/3] 设置测试时长${gl_bai}"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo "建议: 30-120 秒（默认 60 秒）"
+    echo ""
+    read -e -p "请输入测试时长（秒）[60]: " test_duration
+    test_duration=${test_duration:-60}
+    
+    # 验证时长是否为数字
+    if ! [[ "$test_duration" =~ ^[0-9]+$ ]]; then
+        echo -e "${gl_huang}警告: 无效的时长，使用默认值 60 秒${gl_bai}"
+        test_duration=60
+    fi
+    
+    # 限制时长范围
+    if [ "$test_duration" -lt 1 ]; then
+        test_duration=1
+    elif [ "$test_duration" -gt 3600 ]; then
+        echo -e "${gl_huang}警告: 时长过长，限制为 3600 秒${gl_bai}"
+        test_duration=3600
+    fi
+    
+    echo ""
+    echo -e "${gl_lv}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${gl_bai}"
+    echo -e "${gl_kjlan}测试配置确认：${gl_bai}"
+    echo "  目标服务器: ${target_host}"
+    echo "  测试方向: ${direction_text}"
+    echo "  测试时长: ${test_duration} 秒"
+    echo -e "${gl_lv}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${gl_bai}"
+    echo ""
+    
+    # 测试连通性
+    echo -e "${gl_huang}正在测试连通性...${gl_bai}"
+    if ! ping -c 2 -W 3 "$target_host" &>/dev/null; then
+        echo -e "${gl_hong}警告: 无法 ping 通目标服务器，但仍尝试 iperf3 测试...${gl_bai}"
+    else
+        echo -e "${gl_lv}✓ 目标服务器可达${gl_bai}"
+    fi
+    
+    echo ""
+    echo -e "${gl_kjlan}正在执行 iperf3 测试，请稍候...${gl_bai}"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo ""
+    
+    # 执行 iperf3 测试并保存输出
+    local test_output=$(mktemp)
+    iperf3 -c "$target_host" -P 1 $direction_flag -t "$test_duration" -f m 2>&1 | tee "$test_output"
+    local exit_code=$?
+    
+    echo ""
+    
+    # 检查是否成功
+    if [ $exit_code -ne 0 ]; then
+        echo -e "${gl_hong}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${gl_bai}"
+        echo -e "${gl_hong}测试失败！${gl_bai}"
+        echo ""
+        echo "可能的原因："
+        echo "  1. 目标服务器未运行 iperf3 服务（需要执行: iperf3 -s）"
+        echo "  2. 防火墙阻止了连接（默认端口 5201）"
+        echo "  3. 网络连接问题"
+        echo -e "${gl_hong}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${gl_bai}"
+        rm -f "$test_output"
+        break_end
+        return 1
+    fi
+    
+    # 解析测试结果
+    echo -e "${gl_lv}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${gl_bai}"
+    echo -e "${gl_zi}╔════════════════════════════════════════════╗${gl_bai}"
+    echo -e "${gl_zi}║           测 试 结 果 汇 总                ║${gl_bai}"
+    echo -e "${gl_zi}╚════════════════════════════════════════════╝${gl_bai}"
+    echo ""
+    
+    # 提取关键指标
+    local bandwidth=$(grep "sender\|receiver" "$test_output" | tail -1 | awk '{print $7, $8}')
+    local transfer=$(grep "sender\|receiver" "$test_output" | tail -1 | awk '{print $5, $6}')
+    local retrans=$(grep "sender" "$test_output" | tail -1 | awk '{print $9}')
+    
+    echo -e "${gl_kjlan}[测试信息]${gl_bai}"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo "  目标服务器: ${target_host}"
+    echo "  测试方向: ${direction_text}"
+    echo "  测试时长: ${test_duration} 秒"
+    echo "  测试线程: 1"
+    echo ""
+    
+    echo -e "${gl_kjlan}[性能指标]${gl_bai}"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    
+    if [ -n "$bandwidth" ]; then
+        echo "  平均带宽: ${bandwidth}"
+    else
+        echo "  平均带宽: 无法获取"
+    fi
+    
+    if [ -n "$transfer" ]; then
+        echo "  总传输量: ${transfer}"
+    else
+        echo "  总传输量: 无法获取"
+    fi
+    
+    if [ -n "$retrans" ] && [ "$retrans" != "" ]; then
+        echo "  重传次数: ${retrans}"
+        # 简单评价
+        if [ "$retrans" -eq 0 ]; then
+            echo -e "  连接质量: ${gl_lv}优秀（无重传）${gl_bai}"
+        elif [ "$retrans" -lt 100 ]; then
+            echo -e "  连接质量: ${gl_lv}良好${gl_bai}"
+        elif [ "$retrans" -lt 1000 ]; then
+            echo -e "  连接质量: ${gl_huang}一般（重传偏多）${gl_bai}"
+        else
+            echo -e "  连接质量: ${gl_hong}较差（重传过多）${gl_bai}"
+        fi
+    fi
+    
+    echo ""
+    echo -e "${gl_lv}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${gl_bai}"
+    echo -e "${gl_lv}✓ 测试完成${gl_bai}"
+    echo -e "${gl_lv}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${gl_bai}"
+    
+    # 清理临时文件
+    rm -f "$test_output"
+    
+    echo ""
+    break_end
+}
+
+#=============================================================================
 # 主菜单
 #=============================================================================
 
@@ -3737,19 +3927,20 @@ show_main_menu() {
         echo "20. IP质量检测-仅IPv4"
         echo "21. 网络延迟质量检测"
         echo "22. 国际互联速度测试"
-        echo "23. IP媒体/AI解锁检测"
+        echo "23. iperf3单线程网络测试"
+        echo "24. IP媒体/AI解锁检测"
         echo ""
         echo -e "${gl_kjlan}[脚本合集]${gl_bai}"
-        echo "24. PF_realm转发脚本"
-        echo "25. 御坂美琴一键双协议"
-        echo "26. F佬一键sing box脚本"
-        echo "27. 科技lion脚本"
-        echo "28. NS论坛的cake调优"
-        echo "29. 酷雪云脚本"
+        echo "25. PF_realm转发脚本"
+        echo "26. 御坂美琴一键双协议"
+        echo "27. F佬一键sing box脚本"
+        echo "28. 科技lion脚本"
+        echo "29. NS论坛的cake调优"
+        echo "30. 酷雪云脚本"
         echo ""
         echo -e "${gl_kjlan}[代理部署]${gl_bai}"
-        echo "30. 一键部署SOCKS5代理"
-        echo "31. Sub-Store多实例管理"
+        echo "31. 一键部署SOCKS5代理"
+        echo "32. Sub-Store多实例管理"
     else
         echo "1. 安装 XanMod 内核 + BBR v3"
         echo ""
@@ -3782,19 +3973,20 @@ show_main_menu() {
         echo "19. IP质量检测-仅IPv4"
         echo "20. 网络延迟质量检测"
         echo "21. 国际互联速度测试"
-        echo "22. IP媒体/AI解锁检测"
+        echo "22. iperf3单线程网络测试"
+        echo "23. IP媒体/AI解锁检测"
         echo ""
         echo -e "${gl_kjlan}[脚本合集]${gl_bai}"
-        echo "23. PF_realm转发脚本"
-        echo "24. 御坂美琴一键双协议"
-        echo "25. F佬一键sing box脚本"
-        echo "26. 科技lion脚本"
-        echo "27. NS论坛的cake调优"
-        echo "28. 酷雪云脚本"
+        echo "24. PF_realm转发脚本"
+        echo "25. 御坂美琴一键双协议"
+        echo "26. F佬一键sing box脚本"
+        echo "27. 科技lion脚本"
+        echo "28. NS论坛的cake调优"
+        echo "29. 酷雪云脚本"
         echo ""
         echo -e "${gl_kjlan}[代理部署]${gl_bai}"
-        echo "29. 一键部署SOCKS5代理"
-        echo "30. Sub-Store多实例管理"
+        echo "30. 一键部署SOCKS5代理"
+        echo "31. Sub-Store多实例管理"
     fi
     
     echo ""
@@ -3963,66 +4155,73 @@ show_main_menu() {
             if [ $is_installed -eq 0 ]; then
                 run_international_speed_test
             else
-                run_unlock_check
+                iperf3_single_thread_test
             fi
             ;;
         23)
+            if [ $is_installed -eq 0 ]; then
+                iperf3_single_thread_test
+            else
+                run_unlock_check
+            fi
+            ;;
+        24)
             if [ $is_installed -eq 0 ]; then
                 run_unlock_check
             else
                 run_pf_realm
             fi
             ;;
-        24)
+        25)
             if [ $is_installed -eq 0 ]; then
                 run_pf_realm
             else
                 run_misaka_xray
             fi
             ;;
-        25)
+        26)
             if [ $is_installed -eq 0 ]; then
                 run_misaka_xray
             else
                 run_fscarmen_singbox
             fi
             ;;
-        26)
+        27)
             if [ $is_installed -eq 0 ]; then
                 run_fscarmen_singbox
             else
                 run_kejilion_script
             fi
             ;;
-        27)
+        28)
             if [ $is_installed -eq 0 ]; then
                 run_kejilion_script
             else
                 run_ns_cake
             fi
             ;;
-        28)
+        29)
             if [ $is_installed -eq 0 ]; then
                 run_ns_cake
             else
                 run_kxy_script
             fi
             ;;
-        29)
+        30)
             if [ $is_installed -eq 0 ]; then
                 run_kxy_script
             else
                 deploy_socks5
             fi
             ;;
-        30)
+        31)
             if [ $is_installed -eq 0 ]; then
                 deploy_socks5
             else
                 manage_substore
             fi
             ;;
-        31)
+        32)
             if [ $is_installed -eq 0 ]; then
                 manage_substore
             else
