@@ -75,8 +75,8 @@ chmod +x net-tcp-tune.sh
 <summary><b>【步骤1】安装 XanMod 内核 + BBR v3</b></summary>
 
 ```bash
-# 运行脚本（无缓存）
-bash <(curl -fsSL "https://raw.githubusercontent.com/Eric86777/vps-tcp-tune/main/net-tcp-tune.sh?$(date +%s)")
+# 运行脚本
+bbr
 
 # 选择菜单
 选择 1 → 安装 XanMod 内核 + BBR v3
@@ -93,8 +93,8 @@ reboot
 <summary><b>【步骤2】BBR 直连/落地优化（智能带宽检测）</b></summary>
 
 ```bash
-# 再次运行脚本（无缓存）
-bash <(curl -fsSL "https://raw.githubusercontent.com/Eric86777/vps-tcp-tune/main/net-tcp-tune.sh?$(date +%s)")
+# 再次运行脚本
+bbr
 
 # 选择菜单
 选择 2 → BBR 直连/落地优化（智能带宽检测）
@@ -119,8 +119,8 @@ bash <(curl -fsSL "https://raw.githubusercontent.com/Eric86777/vps-tcp-tune/main
 <summary><b>【步骤2备选】CAKE 队列调优</b></summary>
 
 ```bash
-# 再次运行脚本（无缓存）
-bash <(curl -fsSL "https://raw.githubusercontent.com/Eric86777/vps-tcp-tune/main/net-tcp-tune.sh?$(date +%s)")
+# 再次运行脚本
+bbr
 
 # 选择菜单
 选择 3 → NS论坛CAKE调优
@@ -137,8 +137,8 @@ reboot
 <summary><b>【步骤3备选】Reality专用调优</b></summary>
 
 ```bash
-# 再次运行脚本（无缓存）
-bash <(curl -fsSL "https://raw.githubusercontent.com/Eric86777/vps-tcp-tune/main/net-tcp-tune.sh?$(date +%s)")
+# 再次运行脚本
+bbr
 
 # 选择菜单
 选择 4 → 科技lion高性能模式
