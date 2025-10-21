@@ -2991,28 +2991,108 @@ install_xanmod_kernel() {
 #=============================================================================
 
 ip_address() {
-    get_public_ip() {
-        curl -s https://ipinfo.io/ip && echo
-    }
+    local public_ip=""
+    local candidate=""
+    local external_api_success=false
+    local last_curl_status=0
+    local external_api_notice=""
 
-    get_local_ip() {
-        ip route get 8.8.8.8 2>/dev/null | grep -oP 'src \K[^ ]+' || \
-        hostname -I 2>/dev/null | awk '{print $1}' || \
-        ifconfig 2>/dev/null | grep -E 'inet [0-9]' | grep -v '127.0.0.1' | awk '{print $2}' | head -n1
-    }
+    if candidate=$(curl -4 -fsS --max-time 2 https://ipinfo.io/ip 2>/dev/null); then
+        candidate=$(echo "$candidate" | tr -d '\r\n')
+        if [ -n "$candidate" ]; then
+            public_ip="$candidate"
+            external_api_success=true
+        fi
+    else
+        last_curl_status=$?
+    fi
 
-    public_ip=$(get_public_ip)
-    isp_info=$(curl -s --max-time 3 http://ipinfo.io/org)
+    if [ "$external_api_success" = false ]; then
+        if candidate=$(curl -4 -fsS --max-time 2 https://api.ip.sb/ip 2>/dev/null); then
+            candidate=$(echo "$candidate" | tr -d '\r\n')
+            if [ -n "$candidate" ]; then
+                public_ip="$candidate"
+                external_api_success=true
+            fi
+        else
+            last_curl_status=$?
+        fi
+    fi
+
+    if [ "$external_api_success" = false ]; then
+        if candidate=$(curl -4 -fsS --max-time 2 https://ifconfig.me/ip 2>/dev/null); then
+            candidate=$(echo "$candidate" | tr -d '\r\n')
+            if [ -n "$candidate" ]; then
+                public_ip="$candidate"
+                external_api_success=true
+            fi
+        else
+            last_curl_status=$?
+        fi
+    fi
+
+    if [ "$external_api_success" = false ]; then
+        public_ip=$(ip -4 route get 1.1.1.1 2>/dev/null | awk '{for (i=1; i<=NF; i++) if ($i == "src") {print $(i+1); exit}}')
+    fi
+
+    if [ -z "$public_ip" ]; then
+        public_ip=$(hostname -I 2>/dev/null | awk '{print $1}')
+    fi
+
+    if [ -z "$public_ip" ]; then
+        public_ip="外部接口不可达"
+    fi
+
+    if [ "$external_api_success" = false ]; then
+        external_api_notice="外部接口不可达"
+        if [ "$last_curl_status" -ne 0 ]; then
+            external_api_notice+=" (curl 返回码 $last_curl_status)"
+        fi
+    fi
+
+    local local_ipv4=""
+    local_ipv4=$(ip -4 route get 1.1.1.1 2>/dev/null | awk '{for (i=1; i<=NF; i++) if ($i == "src") {print $(i+1); exit}}')
+    if [ -z "$local_ipv4" ]; then
+        local_ipv4=$(hostname -I 2>/dev/null | awk '{print $1}')
+    fi
+    if [ -z "$local_ipv4" ]; then
+        local_ipv4="外部接口不可达"
+    fi
+
+    if ! isp_info=$(curl -fsS --max-time 2 http://ipinfo.io/org 2>/dev/null); then
+        isp_info=""
+    else
+        isp_info=$(echo "$isp_info" | tr -d '\r\n')
+    fi
+
+    if [ -z "$isp_info" ] && [ -n "$external_api_notice" ]; then
+        isp_info="$external_api_notice"
+    fi
 
     if echo "$isp_info" | grep -Eiq 'mobile|unicom|telecom'; then
-        ipv4_address=$(get_local_ip)
+        ipv4_address="$local_ipv4"
     else
         ipv4_address="$public_ip"
     fi
 
-    ipv6_address=$(curl -s --max-time 1 https://v6.ipinfo.io/ip && echo)
-}
+    if [ -z "$ipv4_address" ]; then
+        ipv4_address="$local_ipv4"
+    fi
 
+    if ! ipv6_address=$(curl -fsS --max-time 2 https://v6.ipinfo.io/ip 2>/dev/null); then
+        ipv6_address=""
+    else
+        ipv6_address=$(echo "$ipv6_address" | tr -d '\r\n')
+    fi
+
+    if [ -n "$external_api_notice" ] && [ -z "$isp_info" ]; then
+        isp_info="$external_api_notice"
+    fi
+
+    if [ -z "$isp_info" ]; then
+        isp_info="未获取到运营商信息"
+    fi
+}
 #=============================================================================
 # 网络流量统计函数
 #=============================================================================
