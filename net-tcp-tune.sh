@@ -180,19 +180,21 @@ check_swap() {
 
 add_swap() {
     local new_swap=$1  # 获取传入的参数（单位：MB）
-    
-    echo -e "${gl_kjlan}=== 调整虚拟内存 ===${gl_bai}"
-    
-    # 获取当前系统中所有的 swap 分区
-    local swap_partitions=$(grep -E '^/dev/' /proc/swaps | awk '{print $1}')
-    
-    # 遍历并删除所有的 swap 分区
-    for partition in $swap_partitions; do
-        swapoff "$partition" 2>/dev/null
-        wipefs -a "$partition" 2>/dev/null
-        mkswap -f "$partition" 2>/dev/null
-    done
-    
+
+    echo -e "${gl_kjlan}=== 调整虚拟内存（仅管理 /swapfile） ===${gl_bai}"
+
+    # 检测是否存在活跃的 /dev/* swap 分区
+    local dev_swap_list
+    dev_swap_list=$(awk 'NR>1 && $1 ~ /^\/dev\// {printf "  • %s (大小: %d MB, 已用: %d MB)\n", $1, int(($3+512)/1024), int(($4+512)/1024)}' /proc/swaps)
+
+    if [ -n "$dev_swap_list" ]; then
+        echo -e "${gl_huang}检测到以下 /dev/ 虚拟内存处于激活状态：${gl_bai}"
+        echo "$dev_swap_list"
+        echo ""
+        echo -e "${gl_huang}提示:${gl_bai} 本脚本不会修改 /dev/ 分区，请使用 ${gl_zi}swapoff <设备>${gl_bai} 等命令手动处理。"
+        echo ""
+    fi
+
     # 确保 /swapfile 不再被使用
     swapoff /swapfile 2>/dev/null
     
@@ -312,8 +314,9 @@ calculate_optimal_swap() {
 manage_swap() {
     while true; do
         clear
-        echo -e "${gl_kjlan}=== 虚拟内存管理 ===${gl_bai}"
-        
+        echo -e "${gl_kjlan}=== 虚拟内存管理（仅限 /swapfile） ===${gl_bai}"
+        echo -e "${gl_huang}提示:${gl_bai} 如需调整 /dev/ swap 分区，请手动执行 swapoff/swap 分区工具。"
+
         local mem_total=$(free -m | awk 'NR==2{print $2}')
         local swap_used=$(free -m | awk 'NR==3{print $3}')
         local swap_total=$(free -m | awk 'NR==3{print $2}')
