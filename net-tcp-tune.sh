@@ -81,16 +81,69 @@ clean_sysctl_conf() {
 }
 
 install_package() {
-    for package in "$@"; do
+    local packages=("$@")
+    local missing_packages=()
+    local os_release="/etc/os-release"
+    local os_id=""
+    local os_like=""
+    local pkg_manager=""
+    local update_cmd=()
+    local install_cmd=()
+
+    for package in "${packages[@]}"; do
         if ! command -v "$package" &>/dev/null; then
-            echo -e "${gl_huang}正在安装 $package...${gl_bai}"
-            if command -v apt &>/dev/null; then
-                apt update -y > /dev/null 2>&1
-                apt install -y "$package" > /dev/null 2>&1
-            else
-                echo "错误: 不支持的包管理器"
-                return 1
-            fi
+            missing_packages+=("$package")
+        fi
+    done
+
+    if [ "${#missing_packages[@]}" -eq 0 ]; then
+        return 0
+    fi
+
+    if [ -r "$os_release" ]; then
+        # shellcheck disable=SC1091
+        . "$os_release"
+        os_id="${ID,,}"
+        os_like="${ID_LIKE,,}"
+    fi
+
+    local detection="${os_id} ${os_like}"
+
+    if [[ "$detection" =~ (debian|ubuntu) ]]; then
+        pkg_manager="apt"
+        update_cmd=(apt update -y)
+        install_cmd=(apt install -y)
+    elif [[ "$detection" =~ (rhel|centos|fedora|rocky|alma|redhat) ]]; then
+        if command -v dnf &>/dev/null; then
+            pkg_manager="dnf"
+            update_cmd=(dnf makecache)
+            install_cmd=(dnf install -y)
+        elif command -v yum &>/dev/null; then
+            pkg_manager="yum"
+            update_cmd=(yum makecache)
+            install_cmd=(yum install -y)
+        else
+            echo "错误: 未找到可用的 RHEL 系包管理器 (dnf 或 yum)" >&2
+            return 1
+        fi
+    else
+        echo "错误: 未支持的 Linux 发行版，无法自动安装依赖。请手动安装: ${missing_packages[*]}" >&2
+        return 1
+    fi
+
+    if [ ${#update_cmd[@]} -gt 0 ]; then
+        echo -e "${gl_huang}正在更新软件仓库...${gl_bai}"
+        if ! "${update_cmd[@]}"; then
+            echo "错误: 使用 ${pkg_manager} 更新软件仓库失败。" >&2
+            return 1
+        fi
+    fi
+
+    for package in "${missing_packages[@]}"; do
+        echo -e "${gl_huang}正在安装 $package...${gl_bai}"
+        if ! "${install_cmd[@]}" "$package"; then
+            echo "错误: ${pkg_manager} 安装 $package 失败，请检查上方输出信息。" >&2
+            return 1
         fi
     done
 }
