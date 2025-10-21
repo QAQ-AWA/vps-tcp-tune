@@ -2817,12 +2817,81 @@ install_xanmod_kernel() {
     # ARM 架构特殊处理
     if [ "$cpu_arch" = "aarch64" ]; then
         echo -e "${gl_kjlan}检测到 ARM64 架构，使用专用安装脚本${gl_bai}"
-        bash <(curl -sL jhb.ovh/jb/bbrv3arm.sh)
-        if [ $? -eq 0 ]; then
+
+        install_package curl coreutils || return 1
+
+        local tmp_dir
+        tmp_dir=$(mktemp -d 2>/dev/null)
+        if [ -z "$tmp_dir" ]; then
+            echo -e "${gl_hong}错误: 无法创建临时目录用于下载 ARM64 脚本${gl_bai}"
+            return 1
+        fi
+
+        local script_url="https://jhb.ovh/jb/bbrv3arm.sh"
+        local sha256_url="${script_url}.sha256"
+        local sha512_url="${script_url}.sha512"
+        local script_path="${tmp_dir}/bbrv3arm.sh"
+        local sha256_path="${tmp_dir}/bbrv3arm.sh.sha256"
+        local sha512_path="${tmp_dir}/bbrv3arm.sh.sha512"
+
+        echo "日志: 正在下载 ARM64 安装脚本到临时目录 ${tmp_dir}"
+
+        if ! curl -fsSL "$script_url" -o "$script_path"; then
+            echo -e "${gl_hong}错误: ARM64 安装脚本下载失败${gl_bai}"
+            rm -rf "$tmp_dir"
+            return 1
+        fi
+
+        if ! curl -fsSL "$sha256_url" -o "$sha256_path"; then
+            echo -e "${gl_hong}错误: 未能获取发布方提供的 SHA256 校验文件${gl_bai}"
+            rm -rf "$tmp_dir"
+            return 1
+        fi
+
+        if ! curl -fsSL "$sha512_url" -o "$sha512_path"; then
+            echo -e "${gl_hong}错误: 未能获取发布方提供的 SHA512 校验文件${gl_bai}"
+            rm -rf "$tmp_dir"
+            return 1
+        fi
+
+        local expected_sha256 expected_sha512 actual_sha256 actual_sha512
+        expected_sha256=$(awk 'NR==1 {print $1}' "$sha256_path")
+        expected_sha512=$(awk 'NR==1 {print $1}' "$sha512_path")
+
+        if [ -z "$expected_sha256" ] || [ -z "$expected_sha512" ]; then
+            echo -e "${gl_hong}错误: 校验文件内容无效${gl_bai}"
+            rm -rf "$tmp_dir"
+            return 1
+        fi
+
+        actual_sha256=$(sha256sum "$script_path" | awk '{print $1}')
+        actual_sha512=$(sha512sum "$script_path" | awk '{print $1}')
+
+        if [ "$expected_sha256" != "$actual_sha256" ]; then
+            echo -e "${gl_hong}错误: SHA256 校验失败，已中止${gl_bai}"
+            rm -rf "$tmp_dir"
+            return 1
+        fi
+
+        if [ "$expected_sha512" != "$actual_sha512" ]; then
+            echo -e "${gl_hong}错误: SHA512 校验失败，已中止${gl_bai}"
+            rm -rf "$tmp_dir"
+            return 1
+        fi
+
+        echo -e "${gl_lv}SHA256 与 SHA512 校验通过${gl_bai}"
+        echo -e "${gl_huang}安全提示:${gl_bai} ARM64 脚本已下载至 ${script_path}"
+        echo "如需，您可在继续前使用 cat/less 等命令手动审查脚本内容。"
+        read -s -r -p "审查完成后按 Enter 继续执行（Ctrl+C 取消）..." _
+        echo ""
+
+        if bash "$script_path"; then
+            rm -rf "$tmp_dir"
             echo -e "${gl_lv}ARM BBR v3 安装完成${gl_bai}"
             return 0
         else
             echo -e "${gl_hong}安装失败${gl_bai}"
+            rm -rf "$tmp_dir"
             return 1
         fi
     fi
