@@ -2925,9 +2925,11 @@ install_xanmod_kernel() {
             gpg --dearmor -o /usr/share/keyrings/xanmod-archive-keyring.gpg --yes
     fi
     
+    local xanmod_repo_file="/etc/apt/sources.list.d/xanmod-release.list"
+
     # 添加 XanMod 仓库
     echo 'deb [signed-by=/usr/share/keyrings/xanmod-archive-keyring.gpg] http://deb.xanmod.org releases main' | \
-        tee /etc/apt/sources.list.d/xanmod-release.list > /dev/null
+        tee "$xanmod_repo_file" > /dev/null
     
     # 检测 CPU 架构版本
     echo "正在检测 CPU 支持的最优内核版本..."
@@ -2948,17 +2950,38 @@ install_xanmod_kernel() {
     
     if [ $? -ne 0 ]; then
         echo -e "${gl_hong}内核安装失败！${gl_bai}"
-        rm -f /etc/apt/sources.list.d/xanmod-release.list
+        rm -f "$xanmod_repo_file"
         rm -f check_x86-64_psabi.sh*
         return 1
     fi
-    
+
     # 清理临时文件
-    rm -f /etc/apt/sources.list.d/xanmod-release.list
     rm -f check_x86-64_psabi.sh*
-    
+
     echo -e "${gl_lv}XanMod 内核安装成功！${gl_bai}"
     echo -e "${gl_huang}提示: 请先重启系统加载新内核，然后再配置 BBR${gl_bai}"
+    echo -e "${gl_kjlan}后续更新: 可执行 ${gl_bai}sudo apt update && sudo apt upgrade${gl_kjlan} 以获取最新内核${gl_bai}"
+
+    read -e -p "是否保留 XanMod 软件源以便后续自动获取更新？(Y/n): " keep_repo
+    case "${keep_repo:-Y}" in
+        [Nn])
+            echo -e "${gl_huang}移除软件源后将无法通过 apt upgrade 自动获取内核更新，如需更新需重新添加仓库。${gl_bai}"
+            read -e -p "确认仍要移除 XanMod 软件源吗？(Y/N): " remove_repo
+            case "$remove_repo" in
+                [Yy])
+                    rm -f "$xanmod_repo_file"
+                    echo -e "${gl_huang}已按要求移除 XanMod 软件源。${gl_bai}"
+                    ;;
+                *)
+                    echo -e "${gl_lv}已保留 XanMod 软件源。${gl_bai}"
+                    ;;
+            esac
+            ;;
+        *)
+            echo -e "${gl_lv}已保留 XanMod 软件源，系统可通过 apt upgrade 获取未来的内核更新。${gl_bai}"
+            ;;
+    esac
+
     return 0
 }
 
@@ -4584,10 +4607,12 @@ update_xanmod_kernel() {
     # x86_64 架构更新流程
     echo "正在检查可用更新..."
     
+    local xanmod_repo_file="/etc/apt/sources.list.d/xanmod-release.list"
+
     # 添加 XanMod 仓库（如果不存在）
-    if [ ! -f /etc/apt/sources.list.d/xanmod-release.list ]; then
+    if [ ! -f "$xanmod_repo_file" ]; then
         echo "正在添加 XanMod 仓库..."
-        
+
         # 添加密钥
         wget -qO - ${gh_proxy}raw.githubusercontent.com/kejilion/sh/main/archive.key | \
             gpg --dearmor -o /usr/share/keyrings/xanmod-archive-keyring.gpg --yes 2>/dev/null
@@ -4599,7 +4624,7 @@ update_xanmod_kernel() {
         
         # 添加仓库
         echo 'deb [signed-by=/usr/share/keyrings/xanmod-archive-keyring.gpg] http://deb.xanmod.org releases main' | \
-            tee /etc/apt/sources.list.d/xanmod-release.list > /dev/null
+            tee "$xanmod_repo_file" > /dev/null
     fi
     
     # 更新软件包列表
@@ -4643,12 +4668,30 @@ update_xanmod_kernel() {
             apt install --only-upgrade -y $(echo "$installed_packages" | tr '\n' ' ')
             
             if [ $? -eq 0 ]; then
-                # 清理仓库文件（避免日常 apt update 时出错）
-                rm -f /etc/apt/sources.list.d/xanmod-release.list
-                
                 echo ""
                 echo -e "${gl_lv}✅ XanMod 内核更新成功！${gl_bai}"
                 echo -e "${gl_huang}⚠️  请重启系统以加载新内核${gl_bai}"
+                echo -e "${gl_kjlan}后续更新: 可执行 ${gl_bai}sudo apt update && sudo apt upgrade${gl_kjlan} 以检查新版本${gl_bai}"
+
+                read -e -p "是否保留 XanMod 软件源以便继续接收更新？(Y/n): " keep_repo
+                case "${keep_repo:-Y}" in
+                    [Nn])
+                        echo -e "${gl_huang}移除软件源后将无法通过 apt upgrade 自动获取内核更新，后续需手动重新添加。${gl_bai}"
+                        read -e -p "确认移除 XanMod 软件源吗？(Y/N): " remove_repo
+                        case "$remove_repo" in
+                            [Yy])
+                                rm -f "$xanmod_repo_file"
+                                echo -e "${gl_huang}已按要求移除 XanMod 软件源。${gl_bai}"
+                                ;;
+                            *)
+                                echo -e "${gl_lv}已保留 XanMod 软件源。${gl_bai}"
+                                ;;
+                        esac
+                        ;;
+                    *)
+                        echo -e "${gl_lv}已保留 XanMod 软件源，可继续通过 apt upgrade 获取最新内核。${gl_bai}"
+                        ;;
+                esac
                 return 0
             else
                 echo ""
