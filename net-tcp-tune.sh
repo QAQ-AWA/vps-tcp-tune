@@ -1370,6 +1370,390 @@ analyze_realm_connections() {
 }
 
 #=============================================================================
+# Realm IPv4 强制转发管理
+#=============================================================================
+
+# 备份当前配置
+backup_realm_config() {
+    local backup_dir="/root/.realm_backup"
+    
+    # 创建备份目录
+    if [ ! -d "$backup_dir" ]; then
+        mkdir -p "$backup_dir"
+    fi
+    
+    # 检查是否已存在备份
+    if [ -f "$backup_dir/resolv.conf.bak" ] || [ -f "$backup_dir/config.json.bak" ]; then
+        echo -e "${gl_huang}⚠️  发现已存在的备份${gl_bai}"
+        
+        if [ -f "$backup_dir/backup_time.txt" ]; then
+            echo -n "备份时间: "
+            cat "$backup_dir/backup_time.txt"
+        fi
+        
+        echo ""
+        read -p "是否覆盖现有备份? [y/N]: " overwrite
+        
+        if [[ ! "$overwrite" =~ ^[Yy]$ ]]; then
+            echo -e "${gl_huang}已取消备份操作${gl_bai}"
+            return 1
+        fi
+    fi
+    
+    echo -e "${gl_zi}正在备份配置文件...${gl_bai}"
+    
+    # 备份 resolv.conf
+    if [ -f /etc/resolv.conf ]; then
+        cp /etc/resolv.conf "$backup_dir/resolv.conf.bak"
+        echo -e "${gl_lv}✅ 已备份 /etc/resolv.conf${gl_bai}"
+    else
+        echo -e "${gl_huang}⚠️  /etc/resolv.conf 不存在${gl_bai}"
+    fi
+    
+    # 备份 realm config
+    if [ -f /etc/realm/config.json ]; then
+        cp /etc/realm/config.json "$backup_dir/config.json.bak"
+        echo -e "${gl_lv}✅ 已备份 /etc/realm/config.json${gl_bai}"
+    else
+        echo -e "${gl_huang}⚠️  /etc/realm/config.json 不存在${gl_bai}"
+    fi
+    
+    # 记录备份时间
+    date '+%Y-%m-%d %H:%M:%S' > "$backup_dir/backup_time.txt"
+    
+    echo ""
+    echo -e "${gl_lv}✅ 配置备份完成！${gl_bai}"
+    return 0
+}
+
+# 启用 Realm IPv4 强制转发
+enable_realm_ipv4() {
+    clear
+    echo -e "${gl_kjlan}=========================================="
+    echo "      启用 Realm IPv4 强制转发"
+    echo -e "==========================================${gl_bai}"
+    echo ""
+    
+    # 步骤1：备份配置
+    echo -e "${gl_zi}[步骤 1/5] 备份当前配置...${gl_bai}"
+    echo ""
+    
+    if ! backup_realm_config; then
+        echo ""
+        break_end
+        return 1
+    fi
+    
+    echo ""
+    
+    # 步骤2：修改 resolv.conf
+    echo -e "${gl_zi}[步骤 2/5] 修改 DNS 配置...${gl_bai}"
+    
+    if [ -f /etc/resolv.conf ]; then
+        # 删除 IPv6 DNS 服务器行
+        local ipv6_dns_count=$(grep -c ':' /etc/resolv.conf 2>/dev/null || echo "0")
+        
+        if [ "$ipv6_dns_count" -gt 0 ]; then
+            sed -i '/nameserver.*:/d' /etc/resolv.conf
+            echo -e "${gl_lv}✅ 已删除 ${ipv6_dns_count} 个 IPv6 DNS 服务器${gl_bai}"
+        else
+            echo -e "${gl_lv}✅ 未发现 IPv6 DNS 服务器${gl_bai}"
+        fi
+    else
+        echo -e "${gl_hong}❌ /etc/resolv.conf 不存在${gl_bai}"
+    fi
+    
+    echo ""
+    
+    # 步骤3：修改 Realm 配置
+    echo -e "${gl_zi}[步骤 3/5] 修改 Realm 配置...${gl_bai}"
+    
+    if [ ! -f /etc/realm/config.json ]; then
+        echo -e "${gl_hong}❌ /etc/realm/config.json 不存在${gl_bai}"
+        echo ""
+        break_end
+        return 1
+    fi
+    
+    # 检查是否安装了 jq
+    if ! command -v jq &>/dev/null; then
+        echo "正在安装 jq..."
+        apt-get update -qq && apt-get install -y jq >/dev/null 2>&1
+    fi
+    
+    # 使用 sed 和手动编辑来修改配置
+    local temp_config="/tmp/realm_config_temp.json"
+    
+    # 读取原配置
+    cat /etc/realm/config.json > "$temp_config"
+    
+    # 添加 resolve: ipv4 (在第一个 { 后插入)
+    if ! grep -q '"resolve"' "$temp_config"; then
+        sed -i '0,/{/s/{/{\n    "resolve": "ipv4",/' "$temp_config"
+        echo -e "${gl_lv}✅ 已添加 resolve: ipv4${gl_bai}"
+    else
+        echo -e "${gl_lv}✅ resolve 配置已存在${gl_bai}"
+    fi
+    
+    # 替换所有 ::: 为 0.0.0.0
+    local listen_count=$(grep -c ':::' "$temp_config" 2>/dev/null || echo "0")
+    
+    if [ "$listen_count" -gt 0 ]; then
+        sed -i 's/":::/"0.0.0.0:/g' "$temp_config"
+        echo -e "${gl_lv}✅ 已修改 ${listen_count} 个监听地址为 0.0.0.0${gl_bai}"
+    else
+        echo -e "${gl_lv}✅ 监听地址已经是 IPv4 格式${gl_bai}"
+    fi
+    
+    # 验证 JSON 格式
+    if command -v jq &>/dev/null; then
+        if jq empty "$temp_config" 2>/dev/null; then
+            mv "$temp_config" /etc/realm/config.json
+            echo -e "${gl_lv}✅ 配置文件格式验证通过${gl_bai}"
+        else
+            echo -e "${gl_hong}❌ 配置文件格式错误，已回滚${gl_bai}"
+            rm "$temp_config"
+            return 1
+        fi
+    else
+        mv "$temp_config" /etc/realm/config.json
+    fi
+    
+    echo ""
+    
+    # 步骤4：重启 Realm 服务
+    echo -e "${gl_zi}[步骤 4/5] 重启 Realm 服务...${gl_bai}"
+    
+    if systemctl restart realm 2>/dev/null; then
+        sleep 2
+        
+        if systemctl is-active --quiet realm; then
+            echo -e "${gl_lv}✅ Realm 服务重启成功${gl_bai}"
+        else
+            echo -e "${gl_hong}❌ Realm 服务启动失败${gl_bai}"
+            echo ""
+            echo "查看服务状态："
+            systemctl status realm --no-pager -l
+        fi
+    else
+        echo -e "${gl_huang}⚠️  未找到 realm systemd 服务${gl_bai}"
+        echo "如果使用其他方式启动，请手动重启 Realm"
+    fi
+    
+    echo ""
+    
+    # 步骤5：验证配置
+    echo -e "${gl_zi}[步骤 5/5] 验证配置...${gl_bai}"
+    echo ""
+    
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo -e "${gl_huang}DNS 配置:${gl_bai}"
+    grep '^nameserver' /etc/resolv.conf 2>/dev/null || echo "无 DNS 配置"
+    echo ""
+    
+    echo -e "${gl_huang}Realm 监听端口:${gl_bai}"
+    ss -tlnp 2>/dev/null | grep realm | awk '{print $4}' | head -5 || echo "无监听端口"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo ""
+    
+    echo -e "${gl_lv}🎉 IPv4 强制转发配置完成！${gl_bai}"
+    echo ""
+    echo "验证方法："
+    echo "  ss -tlnp | grep realm"
+    echo "  (应该只显示 0.0.0.0:端口，而不是 [::]:端口)"
+    echo ""
+    
+    break_end
+}
+
+# 还原原始配置
+restore_realm_config() {
+    clear
+    echo -e "${gl_kjlan}=========================================="
+    echo "        还原 Realm 原始配置"
+    echo -e "==========================================${gl_bai}"
+    echo ""
+    
+    local backup_dir="/root/.realm_backup"
+    
+    # 检查备份是否存在
+    if [ ! -d "$backup_dir" ]; then
+        echo -e "${gl_hong}❌ 备份目录不存在${gl_bai}"
+        echo ""
+        echo "可能原因："
+        echo "  - 从未执行过 IPv4 强制转发配置"
+        echo "  - 备份文件已被删除"
+        echo ""
+        break_end
+        return 1
+    fi
+    
+    if [ ! -f "$backup_dir/resolv.conf.bak" ] && [ ! -f "$backup_dir/config.json.bak" ]; then
+        echo -e "${gl_hong}❌ 未找到备份文件${gl_bai}"
+        echo ""
+        break_end
+        return 1
+    fi
+    
+    # 显示备份信息
+    echo -e "${gl_zi}备份信息:${gl_bai}"
+    if [ -f "$backup_dir/backup_time.txt" ]; then
+        echo -n "备份时间: "
+        cat "$backup_dir/backup_time.txt"
+    fi
+    echo ""
+    
+    read -p "确认还原配置? [y/N]: " confirm
+    
+    if [[ ! "$confirm" =~ ^[Yy]$ ]]; then
+        echo -e "${gl_huang}已取消还原操作${gl_bai}"
+        echo ""
+        break_end
+        return 1
+    fi
+    
+    echo ""
+    echo -e "${gl_zi}正在还原配置文件...${gl_bai}"
+    
+    # 还原 resolv.conf
+    if [ -f "$backup_dir/resolv.conf.bak" ]; then
+        cp "$backup_dir/resolv.conf.bak" /etc/resolv.conf
+        echo -e "${gl_lv}✅ 已还原 /etc/resolv.conf${gl_bai}"
+    fi
+    
+    # 还原 realm config
+    if [ -f "$backup_dir/config.json.bak" ]; then
+        cp "$backup_dir/config.json.bak" /etc/realm/config.json
+        echo -e "${gl_lv}✅ 已还原 /etc/realm/config.json${gl_bai}"
+    fi
+    
+    echo ""
+    
+    # 重启服务
+    echo -e "${gl_zi}正在重启 Realm 服务...${gl_bai}"
+    
+    if systemctl restart realm 2>/dev/null; then
+        sleep 2
+        
+        if systemctl is-active --quiet realm; then
+            echo -e "${gl_lv}✅ Realm 服务重启成功${gl_bai}"
+        else
+            echo -e "${gl_hong}❌ Realm 服务启动失败${gl_bai}"
+        fi
+    else
+        echo -e "${gl_huang}⚠️  未找到 realm systemd 服务${gl_bai}"
+    fi
+    
+    echo ""
+    echo -e "${gl_lv}✅ 配置还原完成！${gl_bai}"
+    echo ""
+    
+    break_end
+}
+
+# Realm IPv4 管理主菜单
+realm_ipv4_management() {
+    while true; do
+        clear
+        echo -e "${gl_kjlan}=========================================="
+        echo "      Realm 转发强制使用 IPv4"
+        echo -e "==========================================${gl_bai}"
+        echo ""
+        
+        # 显示当前状态
+        echo -e "${gl_zi}当前状态:${gl_bai}"
+        
+        # 检查备份
+        if [ -d /root/.realm_backup ] && [ -f /root/.realm_backup/config.json.bak ]; then
+            echo -e "备份状态: ${gl_lv}✅ 已备份${gl_bai}"
+            if [ -f /root/.realm_backup/backup_time.txt ]; then
+                echo -n "备份时间: "
+                cat /root/.realm_backup/backup_time.txt
+            fi
+        else
+            echo -e "备份状态: ${gl_huang}⚠️  未备份${gl_bai}"
+        fi
+        
+        # 检查 Realm 配置
+        if [ -f /etc/realm/config.json ]; then
+            if grep -q '"resolve".*"ipv4"' /etc/realm/config.json 2>/dev/null; then
+                echo -e "IPv4强制: ${gl_lv}✅ 已启用${gl_bai}"
+            else
+                echo -e "IPv4强制: ${gl_huang}⚠️  未启用${gl_bai}"
+            fi
+            
+            local listen_ipv6=$(grep -c ':::' /etc/realm/config.json 2>/dev/null || echo "0")
+            if [ "$listen_ipv6" -gt 0 ]; then
+                echo -e "监听地址: ${gl_huang}检测到 ${listen_ipv6} 个 IPv6 监听${gl_bai}"
+            else
+                echo -e "监听地址: ${gl_lv}✅ IPv4 格式${gl_bai}"
+            fi
+        else
+            echo -e "配置文件: ${gl_hong}❌ 不存在${gl_bai}"
+        fi
+        
+        # 检查 DNS
+        if [ -f /etc/resolv.conf ]; then
+            local ipv6_dns=$(grep -c 'nameserver.*:' /etc/resolv.conf 2>/dev/null || echo "0")
+            if [ "$ipv6_dns" -gt 0 ]; then
+                echo -e "DNS配置: ${gl_huang}检测到 ${ipv6_dns} 个 IPv6 DNS${gl_bai}"
+            else
+                echo -e "DNS配置: ${gl_lv}✅ 仅 IPv4 DNS${gl_bai}"
+            fi
+        fi
+        
+        echo ""
+        echo -e "${gl_kjlan}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${gl_bai}"
+        echo ""
+        echo "1. 启用 IPv4 强制转发（会先备份）"
+        echo "2. 还原到原始配置"
+        echo "3. 查看详细配置"
+        echo "0. 返回主菜单"
+        echo ""
+        
+        read -p "请选择操作 [0-3]: " choice
+        
+        case $choice in
+            1)
+                enable_realm_ipv4
+                ;;
+            2)
+                restore_realm_config
+                ;;
+            3)
+                clear
+                echo -e "${gl_kjlan}=========================================="
+                echo "           详细配置信息"
+                echo -e "==========================================${gl_bai}"
+                echo ""
+                
+                echo -e "${gl_huang}=== DNS 配置 ===${gl_bai}"
+                cat /etc/resolv.conf 2>/dev/null || echo "文件不存在"
+                echo ""
+                
+                echo -e "${gl_huang}=== Realm 配置 ===${gl_bai}"
+                cat /etc/realm/config.json 2>/dev/null || echo "文件不存在"
+                echo ""
+                
+                echo -e "${gl_huang}=== Realm 监听端口 ===${gl_bai}"
+                ss -tlnp 2>/dev/null | grep realm || echo "无监听端口"
+                echo ""
+                
+                break_end
+                ;;
+            0)
+                return 0
+                ;;
+            *)
+                echo ""
+                echo -e "${gl_hong}无效选择${gl_bai}"
+                sleep 1
+                ;;
+        esac
+    done
+}
+
+#=============================================================================
 # IPv4/IPv6 连接检测工具
 #=============================================================================
 
@@ -4338,6 +4722,54 @@ show_main_menu() {
         echo ""
         echo -e "${gl_kjlan}[Xray配置]${gl_bai}"
         echo "11. Realm转发连接分析"
+        echo "12. Realm转发强制使用IPV4"
+        echo "13. 查看Xray配置"
+        echo "14. 设置Xray IPv6出站"
+        echo "15. 恢复Xray默认配置"
+        echo ""
+        echo -e "${gl_kjlan}[系统信息]${gl_bai}"
+        echo "16. 查看详细状态"
+        echo ""
+        echo -e "${gl_kjlan}[服务器检测合集]${gl_bai}"
+        echo "17. NS一键检测脚本"
+        echo "18. 服务器带宽测试"
+        echo "19. 三网回程路由测试"
+        echo "20. IP质量检测"
+        echo "21. IP质量检测-仅IPv4"
+        echo "22. 网络延迟质量检测"
+        echo "23. 国际互联速度测试"
+        echo "24. iperf3单线程网络测试"
+        echo "25. IP媒体/AI解锁检测"
+        echo ""
+        echo -e "${gl_kjlan}[脚本合集]${gl_bai}"
+        echo "26. PF_realm转发脚本"
+        echo "27. 御坂美琴一键双协议"
+        echo "28. F佬一键sing box脚本"
+        echo "29. 科技lion脚本"
+        echo "30. NS论坛的cake调优"
+        echo "31. 酷雪云脚本"
+        echo ""
+        echo -e "${gl_kjlan}[代理部署]${gl_bai}"
+        echo "32. 一键部署SOCKS5代理"
+        echo "33. Sub-Store多实例管理"
+    else
+        echo "1. 安装 XanMod 内核 + BBR v3"
+        echo ""
+        echo -e "${gl_kjlan}[BBR TCP调优]${gl_bai}"
+        echo "2. BBR 直连/落地优化（智能带宽检测）"
+        echo "3. NS论坛CAKE调优"
+        echo "4. 科技lion高性能模式内核参数优化"
+        echo ""
+        echo -e "${gl_kjlan}[系统设置]${gl_bai}"
+        echo "5. 设置IPv4/IPv6优先级"
+        echo "6. 虚拟内存管理"
+        echo "7. IPv6管理（临时/永久禁用/取消）"
+        echo "8. 设置临时SOCKS5代理"
+        echo "9. IPv4/IPv6连接检测"
+        echo ""
+        echo -e "${gl_kjlan}[Xray配置]${gl_bai}"
+        echo "10. Realm转发连接分析"
+        echo "11. Realm转发强制使用IPV4"
         echo "12. 查看Xray配置"
         echo "13. 设置Xray IPv6出站"
         echo "14. 恢复Xray默认配置"
@@ -4367,52 +4799,6 @@ show_main_menu() {
         echo -e "${gl_kjlan}[代理部署]${gl_bai}"
         echo "31. 一键部署SOCKS5代理"
         echo "32. Sub-Store多实例管理"
-    else
-        echo "1. 安装 XanMod 内核 + BBR v3"
-        echo ""
-        echo -e "${gl_kjlan}[BBR TCP调优]${gl_bai}"
-        echo "2. BBR 直连/落地优化（智能带宽检测）"
-        echo "3. NS论坛CAKE调优"
-        echo "4. 科技lion高性能模式内核参数优化"
-        echo ""
-        echo -e "${gl_kjlan}[系统设置]${gl_bai}"
-        echo "5. 设置IPv4/IPv6优先级"
-        echo "6. 虚拟内存管理"
-        echo "7. IPv6管理（临时/永久禁用/取消）"
-        echo "8. 设置临时SOCKS5代理"
-        echo "9. IPv4/IPv6连接检测"
-        echo ""
-        echo -e "${gl_kjlan}[Xray配置]${gl_bai}"
-        echo "10. Realm转发连接分析"
-        echo "11. 查看Xray配置"
-        echo "12. 设置Xray IPv6出站"
-        echo "13. 恢复Xray默认配置"
-        echo ""
-        echo -e "${gl_kjlan}[系统信息]${gl_bai}"
-        echo "14. 查看详细状态"
-        echo ""
-        echo -e "${gl_kjlan}[服务器检测合集]${gl_bai}"
-        echo "15. NS一键检测脚本"
-        echo "16. 服务器带宽测试"
-        echo "17. 三网回程路由测试"
-        echo "18. IP质量检测"
-        echo "19. IP质量检测-仅IPv4"
-        echo "20. 网络延迟质量检测"
-        echo "21. 国际互联速度测试"
-        echo "22. iperf3单线程网络测试"
-        echo "23. IP媒体/AI解锁检测"
-        echo ""
-        echo -e "${gl_kjlan}[脚本合集]${gl_bai}"
-        echo "24. PF_realm转发脚本"
-        echo "25. 御坂美琴一键双协议"
-        echo "26. F佬一键sing box脚本"
-        echo "27. 科技lion脚本"
-        echo "28. NS论坛的cake调优"
-        echo "29. 酷雪云脚本"
-        echo ""
-        echo -e "${gl_kjlan}[代理部署]${gl_bai}"
-        echo "30. 一键部署SOCKS5代理"
-        echo "31. Sub-Store多实例管理"
     fi
     
     echo ""
@@ -4504,150 +4890,157 @@ show_main_menu() {
             if [ $is_installed -eq 0 ]; then
                 analyze_realm_connections
             else
-                show_xray_config
+                realm_ipv4_management
             fi
             ;;
         12)
+            if [ $is_installed -eq 0 ]; then
+                realm_ipv4_management
+            else
+                show_xray_config
+            fi
+            ;;
+        13)
             if [ $is_installed -eq 0 ]; then
                 show_xray_config
             else
                 set_xray_ipv6_outbound
             fi
             ;;
-        13)
+        14)
             if [ $is_installed -eq 0 ]; then
                 set_xray_ipv6_outbound
             else
                 restore_xray_default
             fi
             ;;
-        14)
+        15)
             if [ $is_installed -eq 0 ]; then
                 restore_xray_default
             else
                 show_detailed_status
             fi
             ;;
-        15)
+        16)
             if [ $is_installed -eq 0 ]; then
                 show_detailed_status
             else
                 run_ns_detect
             fi
             ;;
-        16)
+        17)
             if [ $is_installed -eq 0 ]; then
                 run_ns_detect
             else
                 run_speedtest
             fi
             ;;
-        17)
+        18)
             if [ $is_installed -eq 0 ]; then
                 run_speedtest
             else
                 run_backtrace
             fi
             ;;
-        18)
+        19)
             if [ $is_installed -eq 0 ]; then
                 run_backtrace
             else
                 run_ip_quality_check
             fi
             ;;
-        19)
+        20)
             if [ $is_installed -eq 0 ]; then
                 run_ip_quality_check
             else
                 run_ip_quality_check_ipv4
             fi
             ;;
-        20)
+        21)
             if [ $is_installed -eq 0 ]; then
                 run_ip_quality_check_ipv4
             else
                 run_network_latency_check
             fi
             ;;
-        21)
+        22)
             if [ $is_installed -eq 0 ]; then
                 run_network_latency_check
             else
                 run_international_speed_test
             fi
             ;;
-        22)
+        23)
             if [ $is_installed -eq 0 ]; then
                 run_international_speed_test
             else
                 iperf3_single_thread_test
             fi
             ;;
-        23)
+        24)
             if [ $is_installed -eq 0 ]; then
                 iperf3_single_thread_test
             else
                 run_unlock_check
             fi
             ;;
-        24)
+        25)
             if [ $is_installed -eq 0 ]; then
                 run_unlock_check
             else
                 run_pf_realm
             fi
             ;;
-        25)
+        26)
             if [ $is_installed -eq 0 ]; then
                 run_pf_realm
             else
                 run_misaka_xray
             fi
             ;;
-        26)
+        27)
             if [ $is_installed -eq 0 ]; then
                 run_misaka_xray
             else
                 run_fscarmen_singbox
             fi
             ;;
-        27)
+        28)
             if [ $is_installed -eq 0 ]; then
                 run_fscarmen_singbox
             else
                 run_kejilion_script
             fi
             ;;
-        28)
+        29)
             if [ $is_installed -eq 0 ]; then
                 run_kejilion_script
             else
                 run_ns_cake
             fi
             ;;
-        29)
+        30)
             if [ $is_installed -eq 0 ]; then
                 run_ns_cake
             else
                 run_kxy_script
             fi
             ;;
-        30)
+        31)
             if [ $is_installed -eq 0 ]; then
                 run_kxy_script
             else
                 deploy_socks5
             fi
             ;;
-        31)
+        32)
             if [ $is_installed -eq 0 ]; then
                 deploy_socks5
             else
                 manage_substore
             fi
             ;;
-        32)
+        33)
             if [ $is_installed -eq 0 ]; then
                 manage_substore
             else
