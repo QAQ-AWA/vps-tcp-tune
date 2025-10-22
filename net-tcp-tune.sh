@@ -5223,7 +5223,7 @@ run_unlock_check() {
     echo ""
 
     # 执行解锁检测脚本
-    bash <(curl -L -s check.unlock.media)
+    bash <(curl -sL Media.Check.Place)
 
     echo ""
     echo "------------------------------------------------"
