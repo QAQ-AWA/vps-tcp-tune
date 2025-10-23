@@ -40,6 +40,23 @@ gl_bai='\033[0m'
 gl_kjlan='\033[96m'
 gl_zi='\033[35m'
 
+# 仓库与下载配置
+DEFAULT_REPO_OWNER="QAQ-AWA"
+DEFAULT_REPO_NAME="vps-tcp-tune"
+DEFAULT_REPO_BRANCH="main"
+
+REPO_OWNER="${VTT_REPO_OWNER:-${DEFAULT_REPO_OWNER}}"
+REPO_NAME="${VTT_REPO_NAME:-${DEFAULT_REPO_NAME}}"
+REPO_BRANCH="${VTT_REPO_BRANCH:-${DEFAULT_REPO_BRANCH}}"
+
+BASE_GITHUB_REPO="https://github.com/${REPO_OWNER}/${REPO_NAME}"
+BASE_RAW_GITHUB="https://raw.githubusercontent.com/${REPO_OWNER}/${REPO_NAME}/${REPO_BRANCH}"
+BASE_RELEASES="${BASE_GITHUB_REPO}/releases/download"
+CDN_JSDELIVR_RAW="https://cdn.jsdelivr.net/gh/${REPO_OWNER}/${REPO_NAME}@${REPO_BRANCH}"
+
+USE_LEGACY_LINKS="${VTT_USE_LEGACY_LINKS:-0}"
+REPO_INFO_PRINTED=0
+
 # GitHub 代理设置
 gh_proxy="https://"
 
@@ -199,6 +216,212 @@ download_from_candidates() {
         fi
     done
 
+    return 1
+}
+
+download_with_fallback() {
+    local relative_path="$1"
+    local output="$2"
+    shift 2
+    local -a extra_candidates=("$@")
+    local primary="${BASE_RAW_GITHUB}/${relative_path}"
+    local cdn="${CDN_JSDELIVR_RAW}/${relative_path}"
+    local -a candidates=("$primary" "$cdn")
+    candidates+=("${extra_candidates[@]}")
+    local -a labels=("自有仓库主源" "自有仓库 CDN 回退")
+
+    print_repo_info_once
+    rm -f "$output"
+
+    for idx in "${!candidates[@]}"; do
+        local url="${candidates[$idx]}"
+        [ -z "$url" ] && continue
+        local label="${labels[$idx]:-备用资源}"
+        echo -e "${gl_kjlan}${label}:${gl_bai} $url"
+        if download_with_retry "$url" "$output"; then
+            LAST_DOWNLOAD_URL="$url"
+            return 0
+        fi
+        echo -e "${gl_huang}下载失败 (${label})${gl_bai}"
+    done
+
+    rm -f "$output"
+    return 1
+}
+
+fetch_text() {
+    local relative_path="$1"
+    local result_var="$2"
+    shift 2
+    local tmp_file
+    tmp_file=$(mktemp)
+
+    if download_with_fallback "$relative_path" "$tmp_file" "$@"; then
+        local content
+        content=$(cat "$tmp_file")
+        rm -f "$tmp_file"
+        printf -v "$result_var" "%s" "$content"
+        return 0
+    fi
+
+    rm -f "$tmp_file"
+    return 1
+}
+
+fetch_release_asset() {
+    local asset_name="$1"
+    local output="$2"
+    local tag="${3:-}"
+    local use_api="${4:-0}"
+    local -a candidates=()
+
+    print_repo_info_once
+    rm -f "$output"
+
+    if [ -n "$tag" ]; then
+        candidates+=("${BASE_RELEASES}/${tag}/${asset_name}")
+        candidates+=("https://download.fastgit.org/${REPO_OWNER}/${REPO_NAME}/releases/download/${tag}/${asset_name}")
+        candidates+=("https://mirror.ghproxy.com/https://github.com/${REPO_OWNER}/${REPO_NAME}/releases/download/${tag}/${asset_name}")
+        candidates+=("https://cdn.jsdelivr.net/gh/${REPO_OWNER}/${REPO_NAME}@${tag}/${asset_name}")
+    else
+        candidates+=("${BASE_RAW_GITHUB}/${asset_name}")
+        candidates+=("${CDN_JSDELIVR_RAW}/${asset_name}")
+    fi
+
+    if [ "$use_api" = "1" ]; then
+        local api_endpoint
+        if [ -n "$tag" ]; then
+            api_endpoint="https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/releases/tags/${tag}"
+        else
+            api_endpoint="https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/releases/latest"
+        fi
+        local asset_url
+        asset_url=$(curl -fsSL "$api_endpoint" 2>/dev/null | awk -v name="$asset_name" -F'"' '
+            $2 == "assets" { in_assets=1; next }
+            in_assets && $2 == "name" && $4 == name { getline; if ($2 == "browser_download_url") { print $4; exit } }
+        ')
+        if [ -n "$asset_url" ]; then
+            candidates=("$asset_url" "${candidates[@]}")
+        fi
+    fi
+
+    for url in "${candidates[@]}"; do
+        [ -z "$url" ] && continue
+        echo -e "${gl_kjlan}尝试下载发布资产:${gl_bai} $url"
+        if download_with_retry "$url" "$output"; then
+            LAST_DOWNLOAD_URL="$url"
+            return 0
+        fi
+        echo -e "${gl_huang}下载失败:${gl_bai} $url"
+    done
+
+    rm -f "$output"
+    return 1
+}
+
+print_repo_info_once() {
+    if [ "${REPO_INFO_PRINTED}" -eq 0 ]; then
+        echo -e "${gl_kjlan}当前资源仓库:${gl_bai} ${REPO_OWNER}/${REPO_NAME}@${REPO_BRANCH}${gl_bai}"
+        echo -e "${gl_kjlan}主源:${gl_bai} ${BASE_RAW_GITHUB}${gl_bai}"
+        echo -e "${gl_kjlan}CDN 回退:${gl_bai} ${CDN_JSDELIVR_RAW}${gl_bai}"
+        if [ "${USE_LEGACY_LINKS}" = "1" ]; then
+            echo -e "${gl_huang}已启用旧版链接兼容模式 (VTT_USE_LEGACY_LINKS=1)${gl_bai}"
+        fi
+        REPO_INFO_PRINTED=1
+    fi
+}
+
+legacy_raw_url() {
+    local owner="$1"
+    local repo="$2"
+    local ref="$3"
+    local path="$4"
+    echo "https://raw.githubusercontent.com/${owner}/${repo}/${ref}/${path}"
+}
+
+get_repo_resource_path() {
+    local key="$1"
+    case "$key" in
+        "xanmod_archive_key") echo "resources/kejilion/archive.key" ;;
+        "xanmod_check_script") echo "resources/kejilion/check_x86-64_psabi.sh" ;;
+        "backtrace_install") echo "resources/ludashi2020/backtrace/install.sh" ;;
+        "latency_tester") echo "resources/Cd1s/network-latency-tester/latency.sh" ;;
+        "pf_realm_script") echo "resources/zywe03/realm-xwPF/xwPF.sh" ;;
+        "xray_dual_install") echo "resources/yahuisme/xray-dual/install.sh" ;;
+        "sing_box_install") echo "resources/fscarmen/sing-box/sing-box.sh" ;;
+        "lotserver_install") echo "resources/fei5seven/lotServer/lotServerInstall.sh" ;;
+        *)
+            return 1
+            ;;
+    esac
+}
+
+get_repo_resource_description() {
+    local key="$1"
+    case "$key" in
+        "xanmod_archive_key") echo "XanMod 仓库密钥" ;;
+        "xanmod_check_script") echo "XanMod 架构检测脚本" ;;
+        "backtrace_install") echo "三网回程路由测试脚本" ;;
+        "latency_tester") echo "国际互联速度测试脚本" ;;
+        "pf_realm_script") echo "PF_realm 转发脚本" ;;
+        "xray_dual_install") echo "御坂美琴一键双协议脚本" ;;
+        "sing_box_install") echo "F佬一键 sing-box 脚本" ;;
+        "lotserver_install") echo "LotServer 管理脚本" ;;
+        *)
+            echo "$key"
+            ;;
+    esac
+}
+
+get_legacy_url() {
+    local key="$1"
+    case "$key" in
+        "xanmod_archive_key") legacy_raw_url "kejilion" "sh" "main" "archive.key" ;;
+        "xanmod_check_script") legacy_raw_url "kejilion" "sh" "main" "check_x86-64_psabi.sh" ;;
+        "backtrace_install") legacy_raw_url "ludashi2020" "backtrace" "main" "install.sh" ;;
+        "latency_tester") legacy_raw_url "Cd1s" "network-latency-tester" "main" "latency.sh" ;;
+        "pf_realm_script") legacy_raw_url "zywe03" "realm-xwPF" "main" "xwPF.sh" ;;
+        "xray_dual_install") legacy_raw_url "yahuisme" "xray-dual" "main" "install.sh" ;;
+        "sing_box_install") legacy_raw_url "fscarmen" "sing-box" "main" "sing-box.sh" ;;
+        "lotserver_install") legacy_raw_url "fei5seven" "lotServer" "master" "lotServerInstall.sh" ;;
+        *)
+            ;;
+    esac
+}
+
+download_repo_resource() {
+    local key="$1"
+    local output="$2"
+    local description="${3:-$(get_repo_resource_description "$key")}"
+    local relative_path
+    if ! relative_path=$(get_repo_resource_path "$key"); then
+        echo -e "${gl_hong}未定义的资源键: ${key}${gl_bai}"
+        return 1
+    fi
+
+    print_repo_info_once
+    echo -e "${gl_kjlan}尝试下载 ${description}...${gl_bai}"
+    if download_with_fallback "$relative_path" "$output"; then
+        echo -e "${gl_lv}下载成功: ${description}${gl_bai}"
+        return 0
+    fi
+
+    echo -e "${gl_huang}${description} 下载失败${gl_bai}"
+    if [ "${USE_LEGACY_LINKS}" = "1" ]; then
+        local legacy_url
+        legacy_url=$(get_legacy_url "$key")
+        if [ -n "$legacy_url" ]; then
+            echo -e "${gl_huang}使用旧版链接重试: ${legacy_url}${gl_bai}"
+            if download_with_retry "$legacy_url" "$output"; then
+                echo -e "${gl_lv}旧版链接下载成功${gl_bai}"
+                LAST_DOWNLOAD_URL="$legacy_url"
+                return 0
+            fi
+        fi
+    fi
+
+    rm -f "$output"
+    echo -e "${gl_hong}无法下载 ${description}${gl_bai}"
     return 1
 }
 
@@ -3719,15 +3942,39 @@ install_xanmod_kernel() {
     
     # 添加 XanMod GPG 密钥
     echo "正在添加 XanMod 仓库密钥..."
-    wget -qO - ${gh_proxy}raw.githubusercontent.com/kejilion/sh/main/archive.key | \
-        gpg --dearmor -o /usr/share/keyrings/xanmod-archive-keyring.gpg --yes
-    
-    if [ $? -ne 0 ]; then
-        echo -e "${gl_hong}密钥下载失败，尝试官方源...${gl_bai}"
-        wget -qO - https://dl.xanmod.org/archive.key | \
-            gpg --dearmor -o /usr/share/keyrings/xanmod-archive-keyring.gpg --yes
+    local xanmod_key_tmp
+    xanmod_key_tmp=$(mktemp)
+    local key_imported=0
+
+    if download_repo_resource "xanmod_archive_key" "$xanmod_key_tmp" "XanMod 仓库密钥"; then
+        if gpg --dearmor -o /usr/share/keyrings/xanmod-archive-keyring.gpg --yes "$xanmod_key_tmp"; then
+            key_imported=1
+        else
+            echo -e "${gl_huang}密钥导入失败，尝试官方源...${gl_bai}"
+        fi
+    else
+        echo -e "${gl_huang}未能从自有仓库获取 XanMod 密钥，尝试官方源...${gl_bai}"
     fi
-    
+
+    if [ $key_imported -ne 1 ]; then
+        if download_with_retry "https://dl.xanmod.org/archive.key" "$xanmod_key_tmp"; then
+            if gpg --dearmor -o /usr/share/keyrings/xanmod-archive-keyring.gpg --yes "$xanmod_key_tmp"; then
+                key_imported=1
+            else
+                echo -e "${gl_hong}密钥导入失败${gl_bai}"
+            fi
+        else
+            echo -e "${gl_hong}密钥下载失败${gl_bai}"
+        fi
+    fi
+
+    rm -f "$xanmod_key_tmp"
+
+    if [ $key_imported -ne 1 ]; then
+        echo -e "${gl_hong}无法获取 XanMod 仓库密钥，终止安装${gl_bai}"
+        return 1
+    fi
+
     local xanmod_repo_file="/etc/apt/sources.list.d/xanmod-release.list"
 
     # 添加 XanMod 仓库
@@ -3736,10 +3983,22 @@ install_xanmod_kernel() {
     
     # 检测 CPU 架构版本
     echo "正在检测 CPU 支持的最优内核版本..."
-    local version=$(wget -q ${gh_proxy}raw.githubusercontent.com/kejilion/sh/main/check_x86-64_psabi.sh && \
-                   chmod +x check_x86-64_psabi.sh && \
-                   ./check_x86-64_psabi.sh | grep -oP 'x86-64-v\K\d+|x86-64-v\d+')
-    
+    local version=""
+    local check_script_tmp
+    check_script_tmp=$(mktemp)
+
+    if download_repo_resource "xanmod_check_script" "$check_script_tmp" "XanMod 架构检测脚本"; then
+        chmod +x "$check_script_tmp"
+        local detect_output
+        detect_output=$(bash "$check_script_tmp" 2>/dev/null)
+        version=$(echo "$detect_output" | grep -oP 'x86-64-v\K\d+|x86-64-v\d+' | head -n1)
+        if [[ "$version" =~ ^x86-64-v([0-9]+)$ ]]; then
+            version="${BASH_REMATCH[1]}"
+        fi
+    fi
+
+    rm -f "$check_script_tmp"
+
     if [ -z "$version" ]; then
         echo -e "${gl_huang}自动检测失败，使用默认版本 v3${gl_bai}"
         version="3"
@@ -3754,12 +4013,8 @@ install_xanmod_kernel() {
     if [ $? -ne 0 ]; then
         echo -e "${gl_hong}内核安装失败！${gl_bai}"
         rm -f "$xanmod_repo_file"
-        rm -f check_x86-64_psabi.sh*
         return 1
     fi
-
-    # 清理临时文件
-    rm -f check_x86-64_psabi.sh*
 
     echo -e "${gl_lv}XanMod 内核安装成功！${gl_bai}"
     echo -e "${gl_huang}提示: 请先重启系统加载新内核，然后再配置 BBR${gl_bai}"
@@ -4777,7 +5032,17 @@ run_backtrace() {
     echo ""
 
     # 执行三网回程路由测试脚本
-    curl https://raw.githubusercontent.com/ludashi2020/backtrace/main/install.sh -sSf | sh
+    local backtrace_tmp
+    backtrace_tmp=$(mktemp)
+    if download_repo_resource "backtrace_install" "$backtrace_tmp" "三网回程路由测试脚本"; then
+        chmod +x "$backtrace_tmp"
+        if ! bash "$backtrace_tmp"; then
+            echo -e "${gl_hong}三网回程路由测试脚本执行失败${gl_bai}"
+        fi
+    else
+        echo -e "${gl_hong}无法获取三网回程路由测试脚本${gl_bai}"
+    fi
+    rm -f "$backtrace_tmp"
 
     echo ""
     echo "------------------------------------------------"
@@ -4856,35 +5121,38 @@ run_international_speed_test() {
     echo "------------------------------------------------"
     echo ""
 
-    # 切换到临时目录
-    cd /tmp || {
+    local latency_tmp
+    local original_dir=$(pwd)
+
+    if ! cd /tmp; then
         echo -e "${gl_hong}错误: 无法切换到 /tmp 目录${gl_bai}"
-        break_end
-        return 1
-    }
-
-    # 下载脚本
-    echo "正在下载脚本..."
-    wget https://raw.githubusercontent.com/Cd1s/network-latency-tester/main/latency.sh
-
-    if [ $? -ne 0 ]; then
-        echo -e "${gl_hong}下载失败！${gl_bai}"
         break_end
         return 1
     fi
 
-    # 添加执行权限
-    chmod +x latency.sh
+    latency_tmp=$(mktemp)
 
-    # 运行测试
+    echo "正在下载脚本..."
+    if ! download_repo_resource "latency_tester" "$latency_tmp" "国际互联速度测试脚本"; then
+        echo -e "${gl_hong}无法获取国际互联速度测试脚本${gl_bai}"
+        rm -f "$latency_tmp"
+        cd "$original_dir" || true
+        break_end
+        return 1
+    fi
+
+    chmod +x "$latency_tmp"
+
     echo ""
     echo "开始测试..."
     echo "------------------------------------------------"
     echo ""
-    ./latency.sh
+    if ! "$latency_tmp"; then
+        echo -e "${gl_hong}国际互联速度测试脚本执行失败${gl_bai}"
+    fi
 
-    # 清理临时文件
-    rm -f latency.sh
+    rm -f "$latency_tmp"
+    cd "$original_dir" || true
 
     echo ""
     echo "------------------------------------------------"
@@ -5517,13 +5785,38 @@ update_xanmod_kernel() {
     if [ ! -f "$xanmod_repo_file" ]; then
         echo "正在添加 XanMod 仓库..."
 
-        # 添加密钥
-        wget -qO - ${gh_proxy}raw.githubusercontent.com/kejilion/sh/main/archive.key | \
-            gpg --dearmor -o /usr/share/keyrings/xanmod-archive-keyring.gpg --yes 2>/dev/null
-        
-        if [ $? -ne 0 ]; then
-            wget -qO - https://dl.xanmod.org/archive.key | \
-                gpg --dearmor -o /usr/share/keyrings/xanmod-archive-keyring.gpg --yes 2>/dev/null
+        local update_key_tmp
+        update_key_tmp=$(mktemp)
+        local update_key_imported=0
+
+        if download_repo_resource "xanmod_archive_key" "$update_key_tmp" "XanMod 仓库密钥"; then
+            if gpg --dearmor -o /usr/share/keyrings/xanmod-archive-keyring.gpg --yes "$update_key_tmp" 2>/dev/null; then
+                update_key_imported=1
+            else
+                echo -e "${gl_huang}密钥导入失败，尝试官方源...${gl_bai}"
+            fi
+        else
+            echo -e "${gl_huang}未能从自有仓库获取 XanMod 密钥，尝试官方源...${gl_bai}"
+        fi
+
+        if [ $update_key_imported -ne 1 ]; then
+            if download_with_retry "https://dl.xanmod.org/archive.key" "$update_key_tmp"; then
+                if gpg --dearmor -o /usr/share/keyrings/xanmod-archive-keyring.gpg --yes "$update_key_tmp" 2>/dev/null; then
+                    update_key_imported=1
+                else
+                    echo -e "${gl_hong}密钥导入失败${gl_bai}"
+                fi
+            else
+                echo -e "${gl_hong}密钥下载失败${gl_bai}"
+            fi
+        fi
+
+        rm -f "$update_key_tmp"
+
+        if [ $update_key_imported -ne 1 ]; then
+            echo -e "${gl_hong}无法获取 XanMod 仓库密钥，终止更新流程${gl_bai}"
+            break_end
+            return 1
         fi
         
         # 添加仓库
@@ -5655,17 +5948,25 @@ run_pf_realm() {
     echo ""
 
     # 执行 PF_realm 转发脚本
-    if wget -qO- https://raw.githubusercontent.com/zywe03/realm-xwPF/main/xwPF.sh | bash -s install; then
-        echo ""
-        echo -e "${gl_lv}✅ PF_realm 脚本执行完成${gl_bai}"
+    local pf_realm_tmp
+    pf_realm_tmp=$(mktemp)
+    if download_repo_resource "pf_realm_script" "$pf_realm_tmp" "PF_realm 转发脚本"; then
+        chmod +x "$pf_realm_tmp"
+        if bash "$pf_realm_tmp" install; then
+            echo ""
+            echo -e "${gl_lv}✅ PF_realm 脚本执行完成${gl_bai}"
+        else
+            echo ""
+            echo -e "${gl_hong}❌ PF_realm 脚本执行失败${gl_bai}"
+            echo "可能原因："
+            echo "1. 脚本执行过程中出错"
+            echo "2. 权限不足"
+        fi
     else
         echo ""
-        echo -e "${gl_hong}❌ PF_realm 脚本执行失败${gl_bai}"
-        echo "可能原因："
-        echo "1. 网络连接问题（无法访问GitHub）"
-        echo "2. 脚本服务器不可用"
-        echo "3. 权限不足"
+        echo -e "${gl_hong}❌ 无法获取 PF_realm 转发脚本${gl_bai}"
     fi
+    rm -f "$pf_realm_tmp"
 
     echo ""
     echo "------------------------------------------------"
@@ -5697,17 +5998,25 @@ run_misaka_xray() {
     echo ""
 
     # 执行御坂美琴一键双协议脚本
-    if bash <(curl -L https://raw.githubusercontent.com/yahuisme/xray-dual/main/install.sh); then
-        echo ""
-        echo -e "${gl_lv}✅ 御坂美琴一键双协议脚本执行完成${gl_bai}"
+    local xray_dual_tmp
+    xray_dual_tmp=$(mktemp)
+    if download_repo_resource "xray_dual_install" "$xray_dual_tmp" "御坂美琴一键双协议脚本"; then
+        chmod +x "$xray_dual_tmp"
+        if bash "$xray_dual_tmp"; then
+            echo ""
+            echo -e "${gl_lv}✅ 御坂美琴一键双协议脚本执行完成${gl_bai}"
+        else
+            echo ""
+            echo -e "${gl_hong}❌ 御坂美琴一键双协议脚本执行失败${gl_bai}"
+            echo "可能原因："
+            echo "1. 脚本执行过程中出错"
+            echo "2. 权限不足"
+        fi
     else
         echo ""
-        echo -e "${gl_hong}❌ 御坂美琴一键双协议脚本执行失败${gl_bai}"
-        echo "可能原因："
-        echo "1. 网络连接问题（无法访问GitHub）"
-        echo "2. curl 命令不可用"
-        echo "3. 脚本执行过程中出错"
+        echo -e "${gl_hong}❌ 无法获取御坂美琴一键双协议脚本${gl_bai}"
     fi
+    rm -f "$xray_dual_tmp"
 
     echo ""
     echo "------------------------------------------------"
@@ -5739,7 +6048,17 @@ run_fscarmen_singbox() {
     echo ""
 
     # 执行 F佬一键sing box脚本
-    bash <(wget -qO- https://raw.githubusercontent.com/fscarmen/sing-box/main/sing-box.sh)
+    local sing_box_tmp
+    sing_box_tmp=$(mktemp)
+    if download_repo_resource "sing_box_install" "$sing_box_tmp" "F佬一键 sing-box 脚本"; then
+        chmod +x "$sing_box_tmp"
+        if ! bash "$sing_box_tmp"; then
+            echo -e "${gl_hong}F佬一键 sing-box 脚本执行失败${gl_bai}"
+        fi
+    else
+        echo -e "${gl_hong}无法获取 F佬一键 sing-box 脚本${gl_bai}"
+    fi
+    rm -f "$sing_box_tmp"
 
     echo ""
     echo "------------------------------------------------"
@@ -5763,7 +6082,17 @@ remove_bbr_lotserver() {
   rm -rf bbrmod
 
   if [[ -e /appex/bin/lotServer.sh ]]; then
-    echo | bash <(wget -qO- https://raw.githubusercontent.com/fei5seven/lotServer/master/lotServerInstall.sh) uninstall
+    local lotserver_tmp
+    lotserver_tmp=$(mktemp)
+    if download_repo_resource "lotserver_install" "$lotserver_tmp" "LotServer 管理脚本"; then
+      chmod +x "$lotserver_tmp"
+      if ! printf '\n' | bash "$lotserver_tmp" uninstall; then
+        echo -e "${gl_huang}LotServer 卸载脚本执行失败${gl_bai}"
+      fi
+    else
+      echo -e "${gl_huang}未能获取 LotServer 管理脚本，跳过自动卸载${gl_bai}"
+    fi
+    rm -f "$lotserver_tmp"
   fi
   clear
 }
@@ -7045,6 +7374,7 @@ manage_substore() {
 
 main() {
     check_root
+    print_repo_info_once
     
     # 命令行参数支持
     if [ "$1" = "-i" ] || [ "$1" = "--install" ]; then
