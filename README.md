@@ -16,7 +16,7 @@
 
 ```bash
 # 安装别名
-bash <(curl -fsSL "https://raw.githubusercontent.com/Eric86777/vps-tcp-tune/main/install-alias.sh?$(date +%s)")
+bash <(curl -fsSL "https://raw.githubusercontent.com/QAQ-AWA/vps-tcp-tune/main/install-alias.sh?$(date +%s)")
 
 # 重新加载配置
 source ~/.bashrc  # 或 source ~/.zshrc
@@ -24,6 +24,18 @@ source ~/.bashrc  # 或 source ~/.zshrc
 # 以后直接使用
 bbr
 ```
+
+> ℹ️ **自定义仓库 / 分支**
+>
+> 在运行脚本、别名或辅助工具前，可通过以下环境变量覆盖默认仓库：
+>
+> ```bash
+> export VTT_REPO_OWNER="你的 GitHub 用户名"
+> export VTT_REPO_NAME="仓库名称"
+> export VTT_REPO_BRANCH="分支名称"
+> ```
+>
+> 若需临时回退至旧版外部链接，可设置 `VTT_USE_LEGACY_LINKS=1`。不推荐长期使用，仅用于自有镜像缺失时的应急兼容。
 
 **✨ 优势**：
 - ✅ 每次运行自动获取最新版本
@@ -38,18 +50,18 @@ bbr
 
 ```bash
 # 推荐：使用时间戳参数确保获取最新版本（无缓存）
-bash <(curl -fsSL "https://raw.githubusercontent.com/Eric86777/vps-tcp-tune/main/net-tcp-tune.sh?$(date +%s)")
+bash <(curl -fsSL "https://raw.githubusercontent.com/QAQ-AWA/vps-tcp-tune/main/net-tcp-tune.sh?$(date +%s)")
 ```
 
 **或使用 wget：**
 ```bash
-bash <(wget -qO- "https://raw.githubusercontent.com/Eric86777/vps-tcp-tune/main/net-tcp-tune.sh?$(date +%s)")
+bash <(wget -qO- "https://raw.githubusercontent.com/QAQ-AWA/vps-tcp-tune/main/net-tcp-tune.sh?$(date +%s)")
 ```
 
 ### 方式3：下载到本地
 
 ```bash
-wget -O net-tcp-tune.sh "https://raw.githubusercontent.com/Eric86777/vps-tcp-tune/main/net-tcp-tune.sh?$(date +%s)"
+wget -O net-tcp-tune.sh "https://raw.githubusercontent.com/QAQ-AWA/vps-tcp-tune/main/net-tcp-tune.sh?$(date +%s)"
 chmod +x net-tcp-tune.sh
 ./net-tcp-tune.sh
 ```
@@ -57,7 +69,7 @@ chmod +x net-tcp-tune.sh
 ### 方式4：快速启动脚本（本地运行最新版）
 
 ```bash
-wget -O bbr.sh "https://raw.githubusercontent.com/Eric86777/vps-tcp-tune/main/bbr.sh?$(date +%s)"
+wget -O bbr.sh "https://raw.githubusercontent.com/QAQ-AWA/vps-tcp-tune/main/bbr.sh?$(date +%s)"
 chmod +x bbr.sh
 ./bbr.sh
 ```
@@ -993,8 +1005,8 @@ A: 不会。所有方案都是临时生效（使用sysctl -w），重启后自�
 
 ## 🌐 相关链接
 
-- **GitHub**: [https://github.com/Eric86777/vps-tcp-tune](https://github.com/Eric86777/vps-tcp-tune)
-- **问题反馈**: [Issues](https://github.com/Eric86777/vps-tcp-tune/issues)
+- **GitHub**: [https://github.com/QAQ-AWA/vps-tcp-tune](https://github.com/QAQ-AWA/vps-tcp-tune)
+- **问题反馈**: [Issues](https://github.com/QAQ-AWA/vps-tcp-tune/issues)
 - **视频教程**: [B站](https://www.bilibili.com/video/BV14K421x7BS)
 
 ---
@@ -1278,7 +1290,7 @@ A: 不会。所有方案都是临时生效（使用sysctl -w），重启后自�
   - 科技lion品牌化，提升辨识度
   - 保持菜单逻辑清晰，易于查找
 
-[查看更多历史版本](https://github.com/Eric86777/vps-tcp-tune/releases)
+[查看更多历史版本](https://github.com/QAQ-AWA/vps-tcp-tune/releases)
 
 </details>
 

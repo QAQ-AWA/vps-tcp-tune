@@ -4,7 +4,7 @@
 
 **原始命令**（太长了！）：
 ```bash
-bash <(wget -qO- https://raw.githubusercontent.com/Eric86777/vps-tcp-tune/main/net-tcp-tune.sh)
+bash <(wget -qO- https://raw.githubusercontent.com/QAQ-AWA/vps-tcp-tune/main/net-tcp-tune.sh)
 ```
 
 **解决方案**：安装快捷别名，以后只需输入 `bbr` 即可！
@@ -16,7 +16,7 @@ bash <(wget -qO- https://raw.githubusercontent.com/Eric86777/vps-tcp-tune/main/n
 ### 第一步：安装快捷别名（只需一次）
 
 ```bash
-bash <(wget -qO- https://raw.githubusercontent.com/Eric86777/vps-tcp-tune/main/install-alias.sh)
+bash <(wget -qO- https://raw.githubusercontent.com/QAQ-AWA/vps-tcp-tune/main/install-alias.sh)
 ```
 
 ### 第二步：重新加载配置
@@ -70,10 +70,18 @@ bash <(wget -qO- https://raw.githubusercontent.com/.../net-tcp-tune.sh)
 
 ### 快捷别名原理
 
-安装别名后，在你的配置文件（`~/.zshrc` 或 `~/.bashrc`）中添加：
+安装别名后，在你的配置文件（`~/.zshrc` 或 `~/.bashrc`）中会自动写入：
 
 ```bash
-alias bbr="bash <(curl -fsSL \"https://raw.githubusercontent.com/Eric86777/vps-tcp-tune/main/net-tcp-tune.sh?\$(date +%s)\")"
+vtt_net_tcp_tune_runner() {
+    local owner="\${VTT_REPO_OWNER:-QAQ-AWA}"
+    local name="\${VTT_REPO_NAME:-vps-tcp-tune}"
+    local branch="\${VTT_REPO_BRANCH:-main}"
+    local primary="https://raw.githubusercontent.com/\${owner}/\${name}/\${branch}/net-tcp-tune.sh"
+    local cdn="https://cdn.jsdelivr.net/gh/\${owner}/\${name}@\${branch}/net-tcp-tune.sh"
+    # ... 省略: 自动选择 curl / wget，并在主源失败时启用 jsDelivr CDN 回退
+}
+alias bbr='vtt_net_tcp_tune_runner'
 ```
 
 **当你输入 `bbr` 时**：
@@ -97,7 +105,7 @@ alias bbr="bash <(curl -fsSL \"https://raw.githubusercontent.com/Eric86777/vps-t
 
 ```bash
 # 下载主脚本
-wget https://raw.githubusercontent.com/Eric86777/vps-tcp-tune/main/net-tcp-tune.sh
+wget https://raw.githubusercontent.com/QAQ-AWA/vps-tcp-tune/main/net-tcp-tune.sh
 chmod +x net-tcp-tune.sh
 
 # 运行
@@ -108,7 +116,7 @@ chmod +x net-tcp-tune.sh
 
 ```bash
 # 下载快速启动脚本
-wget https://raw.githubusercontent.com/Eric86777/vps-tcp-tune/main/bbr.sh
+wget https://raw.githubusercontent.com/QAQ-AWA/vps-tcp-tune/main/bbr.sh
 chmod +x bbr.sh
 
 # 运行（会自动下载并运行最新版）
@@ -165,7 +173,7 @@ source ~/.zshrc
 ### 场景1：你的VPS服务器（最推荐）
 ```bash
 # 第一次：安装别名
-bash <(wget -qO- https://raw.githubusercontent.com/Eric86777/vps-tcp-tune/main/install-alias.sh)
+bash <(wget -qO- https://raw.githubusercontent.com/QAQ-AWA/vps-tcp-tune/main/install-alias.sh)
 source ~/.bashrc
 
 # 以后：直接使用
@@ -175,7 +183,7 @@ bbr
 ### 场景2：临时使用（不想安装）
 ```bash
 # 下载快速启动脚本
-wget https://raw.githubusercontent.com/Eric86777/vps-tcp-tune/main/bbr.sh
+wget https://raw.githubusercontent.com/QAQ-AWA/vps-tcp-tune/main/bbr.sh
 chmod +x bbr.sh
 
 # 使用
@@ -192,7 +200,7 @@ chmod +x bbr.sh
 
 ## 📞 需要帮助？
 
-- **GitHub Issues**: https://github.com/Eric86777/vps-tcp-tune/issues
+- **GitHub Issues**: https://github.com/QAQ-AWA/vps-tcp-tune/issues
 - **完整文档**: 查看 [README.md](README.md)
 - **视频教程**: [B站教程](https://www.bilibili.com/video/BV14K421x7BS)
 
