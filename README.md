@@ -54,6 +54,19 @@ chmod +x net-tcp-tune.sh
 ./net-tcp-tune.sh
 ```
 
+### 方式4：快速启动脚本（本地运行最新版）
+
+```bash
+wget -O bbr.sh "https://raw.githubusercontent.com/Eric86777/vps-tcp-tune/main/bbr.sh?$(date +%s)"
+chmod +x bbr.sh
+./bbr.sh
+```
+
+**适用场景**：
+- ✅ 想保留一个短小的启动脚本
+- ✅ 每次运行都希望自动获取最新版本
+- ✅ 需要在多台服务器间快速复制使用
+
 </details>
 
 ---
