@@ -40,6 +40,13 @@ gl_bai='\033[0m'
 gl_kjlan='\033[96m'
 gl_zi='\033[35m'
 
+# 调试与安全选项
+if [ "${VTT_DEBUG:-0}" = "1" ]; then
+    set -x
+    echo -e "${gl_huang}已启用调试模式 (VTT_DEBUG=1)${gl_bai}"
+fi
+: "${VTT_SKIP_SHA:=0}"
+
 # 仓库与下载配置
 DEFAULT_REPO_OWNER="QAQ-AWA"
 DEFAULT_REPO_NAME="vps-tcp-tune"
@@ -209,13 +216,20 @@ download_from_candidates() {
 
     rm -f "$output"
 
+    local idx=1
     for candidate in "$@"; do
+        [ -z "$candidate" ] && continue
+        echo -e "${gl_kjlan}下载候选 #${idx}:${gl_bai} $candidate"
         if download_with_retry "$candidate" "$output"; then
             LAST_DOWNLOAD_URL="$candidate"
+            echo -e "${gl_lv}下载成功:${gl_bai} $candidate"
             return 0
         fi
+        echo -e "${gl_huang}下载失败:${gl_bai} $candidate"
+        idx=$((idx + 1))
     done
 
+    rm -f "$output"
     return 1
 }
 
@@ -427,10 +441,18 @@ download_repo_resource() {
 
 confirm_insecure_operation() {
     local message="$1"
+    local skip_env="${VTT_SKIP_SHA:-0}"
+
+    if [ "$skip_env" = "1" ]; then
+        echo -e "${gl_huang}警告: ${gl_bai}${message} (VTT_SKIP_SHA=1，已自动跳过校验)"
+        return 0
+    fi
 
     if is_interactive_shell; then
         echo -e "${gl_huang}警告: ${gl_bai}${message}"
-        read -e -p "仍要继续吗？(y/N): " reply
+        local reply
+        read -e -p "校验文件缺失，是否跳过校验继续安装？[Y/n]: " reply
+        reply=${reply:-Y}
         case "$reply" in
             [Yy]*)
                 return 0
@@ -441,7 +463,7 @@ confirm_insecure_operation() {
                 ;;
         esac
     else
-        echo -e "${gl_huang}警告: ${gl_bai}${message} (非交互模式，默认继续)"
+        echo -e "${gl_huang}警告: ${gl_bai}${message} (非交互模式默认跳过校验)"
         return 0
     fi
 }
@@ -3557,171 +3579,136 @@ apply_bbr_preferences() {
 
 try_install_xanmod_arm64() {
     ARM64_LAST_ERROR=""
-    echo -e "${gl_kjlan}→ 尝试安装 XanMod ARM64 内核${gl_bai}"
+    echo -e "${gl_kjlan}→ 尝试通过 XanMod APT 仓库安装 ARM64 内核${gl_bai}"
 
-    if ! command -v python3 &>/dev/null; then
-        echo -e "${gl_huang}提示: 未检测到 python3，将尝试补充安装依赖${gl_bai}"
+    local arch=""
+    arch=$(dpkg --print-architecture 2>/dev/null || true)
+    if [ -z "$arch" ]; then
+        arch=$(uname -m 2>/dev/null)
     fi
-
-    local tmp_dir
-    tmp_dir=$(mktemp -d 2>/dev/null)
-    if [ -z "$tmp_dir" ]; then
-        ARM64_LAST_ERROR="无法创建临时目录"
-        return 1
-    fi
-
-    local releases_api="${gh_proxy}api.github.com/repos/xanmod/linux/releases?per_page=10"
-    local releases_json="$tmp_dir/releases.json"
-
-    if ! download_with_retry "$releases_api" "$releases_json" 3 2 10 30; then
-        local fallback_api="https://mirror.ghproxy.com/https://api.github.com/repos/xanmod/linux/releases?per_page=10"
-        if ! download_with_retry "$fallback_api" "$releases_json" 3 2 10 30; then
-            ARM64_LAST_ERROR="无法访问 XanMod GitHub Releases API"
-            rm -rf "$tmp_dir"
+    case "$arch" in
+        arm64|aarch64)
+            ;;
+        *)
+            ARM64_LAST_ERROR="当前架构 (${arch:-未知}) 非 ARM64"
             return 1
-        fi
-    fi
+            ;;
+    esac
 
-    if ! command -v python3 &>/dev/null; then
-        ARM64_LAST_ERROR="python3 未安装，无法解析 GitHub 发布"
-        rm -rf "$tmp_dir"
-        return 1
-    fi
+    local keyring="/usr/share/keyrings/xanmod-archive-keyring.gpg"
+    local repo_file="/etc/apt/sources.list.d/xanmod-release.list"
+    local key_installed=0
 
-    local parse_output
-    parse_output=$(python3 - "$releases_json" <<'PY'
-import json, sys, pathlib
-path = pathlib.Path(sys.argv[1])
-try:
-    data = json.loads(path.read_text())
-except Exception:
-    sys.exit(0)
-for release in data:
-    assets = release.get("assets") or []
-    if not assets:
-        continue
-    deb_asset = None
-    checksum_asset = None
-    generic_checksum = None
-    for asset in assets:
-        name = asset.get("name") or ""
-        lower = name.lower()
-        if lower.endswith(".deb") and "arm64" in lower:
-            deb_asset = asset
-        if "sha256" in lower and "arm64" in lower:
-            checksum_asset = asset
-        if "sha256sum" in lower or "sha256sums" in lower:
-            generic_checksum = asset
-    if deb_asset:
-        chosen_checksum = checksum_asset or generic_checksum
-        print("|".join([
-            deb_asset.get("browser_download_url") or "",
-            deb_asset.get("name") or "",
-            (chosen_checksum or {}).get("browser_download_url") or "",
-            release.get("tag_name") or ""
-        ]))
-        break
-PY
-)
-
-    if [ -z "$parse_output" ]; then
-        ARM64_LAST_ERROR="未找到适用于 ARM64 的 XanMod 发布资产"
-        rm -rf "$tmp_dir"
-        return 1
-    fi
-
-    local asset_url=""
-    local asset_name=""
-    local sha_url=""
-    local release_tag=""
-    IFS='|' read -r asset_url asset_name sha_url release_tag <<< "$parse_output"
-
-    if [ -z "$asset_url" ] || [ -z "$asset_name" ]; then
-        ARM64_LAST_ERROR="XanMod 发布资产信息不完整"
-        rm -rf "$tmp_dir"
-        return 1
-    fi
-
-    local asset_path="$tmp_dir/$asset_name"
-    local -a asset_candidates=("$asset_url")
-    if [[ "$asset_url" == https://github.com/* ]]; then
-        local relative="${asset_url#https://github.com/}"
-        asset_candidates+=("https://download.fastgit.org/${relative}")
-        asset_candidates+=("https://mirror.ghproxy.com/${asset_url}")
-    fi
-
-    if ! download_from_candidates "$asset_path" "${asset_candidates[@]}"; then
-        ARM64_LAST_ERROR="XanMod 内核包下载失败"
-        rm -rf "$tmp_dir"
-        return 1
-    fi
-
-    local expected_hash=""
-    if [ -n "$sha_url" ]; then
-        local -a sha_candidates=("$sha_url")
-        if [[ "$sha_url" == https://github.com/* ]]; then
-            local sha_relative="${sha_url#https://github.com/}"
-            sha_candidates+=("https://download.fastgit.org/${sha_relative}")
-            sha_candidates+=("https://mirror.ghproxy.com/${sha_url}")
-        fi
-        local sha_path="$tmp_dir/sha256SUMS"
-        if download_from_candidates "$sha_path" "${sha_candidates[@]}"; then
-            expected_hash=$(grep -i "$asset_name" "$sha_path" | head -n1 | awk '{print $1}')
-            if [ -z "$expected_hash" ]; then
-                expected_hash=$(awk -v name="$asset_name" '
-                    {
-                        for (i=1; i<=NF; i++) {
-                            if (tolower($i) == tolower(name)) {
-                                for (j=1; j<=NF; j++) {
-                                    if ($j ~ /^[0-9a-fA-F]{64}$/) {
-                                        print $j
-                                        exit
-                                    }
-                                }
-                            }
-                        }
-                    }
-                ' "$sha_path")
-            fi
-        else
-            echo -e "${gl_huang}警告: 未能下载 XanMod 校验文件，将尝试继续${gl_bai}"
-        fi
-    fi
-
-    if [ -n "$expected_hash" ]; then
-        local actual_hash
-        actual_hash=$(sha256sum "$asset_path" | awk '{print $1}')
-        if [ "$expected_hash" != "$actual_hash" ]; then
-            ARM64_LAST_ERROR="SHA256 校验失败 (预期 $expected_hash, 实得 $actual_hash)"
-            rm -rf "$tmp_dir"
-            return 1
-        fi
-        echo -e "${gl_lv}校验通过: $asset_name${gl_bai}"
+    if [ -s "$keyring" ]; then
+        key_installed=1
     else
-        if ! confirm_insecure_operation "未找到 XanMod ARM64 包 ${asset_name} 的 SHA256 校验信息"; then
-            ARM64_LAST_ERROR="用户取消未校验的 XanMod 安装"
-            rm -rf "$tmp_dir"
-            return 1
+        local key_tmp
+        key_tmp=$(mktemp 2>/dev/null)
+        if [ -n "$key_tmp" ]; then
+            if download_repo_resource "xanmod_archive_key" "$key_tmp" "XanMod 仓库密钥"; then
+                if gpg --dearmor -o "$keyring" --yes "$key_tmp"; then
+                    key_installed=1
+                else
+                    echo -e "${gl_huang}密钥导入失败，尝试官方源${gl_bai}"
+                fi
+            else
+                echo -e "${gl_huang}未能从自有仓库获取 XanMod 密钥，尝试官方源${gl_bai}"
+            fi
+
+            if [ "$key_installed" -ne 1 ]; then
+                rm -f "$key_tmp"
+                key_tmp=$(mktemp 2>/dev/null)
+                if [ -n "$key_tmp" ] && download_with_retry "https://dl.xanmod.org/archive.key" "$key_tmp"; then
+                    if gpg --dearmor -o "$keyring" --yes "$key_tmp"; then
+                        key_installed=1
+                    fi
+                fi
+            fi
+
+            rm -f "$key_tmp"
         fi
     fi
 
-    if apt install -y "$asset_path"; then
-        apt-get -y -f install >/dev/null 2>&1 || true
-        echo -e "${gl_lv}已安装 XanMod ARM64 内核 (${release_tag})${gl_bai}"
-        rm -rf "$tmp_dir"
-        return 0
+    if [ "$key_installed" -ne 1 ]; then
+        ARM64_LAST_ERROR="无法获取 XanMod 仓库密钥"
+        return 1
     fi
 
-    dpkg -i "$asset_path" >/dev/null 2>&1 || true
-    if apt-get -y -f install; then
-        echo -e "${gl_lv}已安装 XanMod ARM64 内核 (${release_tag})${gl_bai}"
-        rm -rf "$tmp_dir"
-        return 0
+    local repo_preexisting=0
+    if [ -f "$repo_file" ]; then
+        repo_preexisting=1
+    fi
+    echo "deb [signed-by=${keyring}] http://deb.xanmod.org releases main" | tee "$repo_file" > /dev/null
+    echo -e "${gl_kjlan}已写入 XanMod APT 仓库: ${repo_file}${gl_bai}"
+
+    if ! apt update; then
+        ARM64_LAST_ERROR="apt update 失败（XanMod 仓库不可用或网络异常）"
+        if [ "$repo_preexisting" -eq 0 ]; then
+            rm -f "$repo_file"
+        fi
+        return 1
     fi
 
-    ARM64_LAST_ERROR="dpkg/apt 安装 XanMod 内核失败"
-    rm -rf "$tmp_dir"
-    return 1
+    local package=""
+    local -a prefer_pkgs=(
+        "linux-xanmod-lts"
+        "linux-image-xanmod-lts"
+        "linux-xanmod"
+        "linux-image-xanmod"
+    )
+
+    local pkg
+    for pkg in "${prefer_pkgs[@]}"; do
+        if apt-cache show "$pkg" >/dev/null 2>&1; then
+            package="$pkg"
+            break
+        fi
+    done
+
+    if [ -z "$package" ]; then
+        package=$(apt-cache search --names-only '^linux.*xanmod' 2>/dev/null | awk '{print $1}' | head -n1)
+    fi
+
+    if [ -z "$package" ]; then
+        ARM64_LAST_ERROR="XanMod 仓库中未找到 ARM64 内核包"
+        if [ "$repo_preexisting" -eq 0 ]; then
+            rm -f "$repo_file"
+        fi
+        return 1
+    fi
+
+    echo -e "${gl_kjlan}检测到可用内核包:${gl_bai} ${package}"
+    if ! apt install -y "$package"; then
+        ARM64_LAST_ERROR="apt 安装 ${package} 失败"
+        if [ "$repo_preexisting" -eq 0 ]; then
+            rm -f "$repo_file"
+        fi
+        return 1
+    fi
+
+    local header_pkg=""
+    local candidate_header=""
+    case "$package" in
+        linux-image-*)
+            candidate_header="${package/linux-image/linux-headers}"
+            if apt-cache show "$candidate_header" >/dev/null 2>&1; then
+                header_pkg="$candidate_header"
+            fi
+            ;;
+        linux-xanmod*)
+            if apt-cache show linux-headers-xanmod >/dev/null 2>&1; then
+                header_pkg="linux-headers-xanmod"
+            fi
+            ;;
+    esac
+
+    if [ -n "$header_pkg" ]; then
+        echo -e "${gl_kjlan}尝试安装头文件:${gl_bai} ${header_pkg}"
+        apt install -y "$header_pkg" >/dev/null 2>&1 || true
+    fi
+
+    echo -e "${gl_lv}已安装 XanMod ARM64 内核 (${package})${gl_bai}"
+    return 0
 }
 
 try_install_debian_backports_kernel() {
@@ -3823,6 +3810,7 @@ try_install_ubuntu_hwe_kernel() {
 
 install_arm64_kernel_stack() {
     echo -e "${gl_kjlan}=== ARM64 内核安装流程 ===${gl_bai}"
+    echo -e "${gl_kjlan}策略顺序:${gl_bai} XanMod APT → Debian Backports → Ubuntu HWE → BBR/BBR2 + fq"
 
     check_disk_space 3
 
@@ -3836,10 +3824,10 @@ install_arm64_kernel_stack() {
 
     if try_install_xanmod_arm64; then
         kernel_installed=true
-        install_source="XanMod 官方发布"
+        install_source="XanMod APT 仓库"
     else
         local reason="${ARM64_LAST_ERROR:-未知原因}"
-        failure_msgs+=("XanMod: ${reason}")
+        failure_msgs+=("XanMod APT: ${reason}")
     fi
 
     if [ "$kernel_installed" = false ]; then
@@ -3864,12 +3852,14 @@ install_arm64_kernel_stack() {
 
     if [ "$kernel_installed" = true ]; then
         echo -e "${gl_lv}内核安装成功，来源: ${install_source}${gl_bai}"
+        echo -e "${gl_kjlan}策略结果:${gl_bai} ${install_source}"
         echo -e "${gl_huang}提示: 请重启系统以加载新内核 (reboot)${gl_bai}"
     else
         echo -e "${gl_huang}未能安装新的 ARM64 内核，准备在现有内核上启用 BBR/BBR2${gl_bai}"
         for item in "${failure_msgs[@]}"; do
             [ -n "$item" ] && echo -e "${gl_huang}  • ${item}${gl_bai}"
         done
+        echo -e "${gl_kjlan}策略结果:${gl_bai} 使用当前内核 + BBR/BBR2 + fq"
     fi
 
     echo -e "${gl_kjlan}配置拥塞控制与默认队列...${gl_bai}"
